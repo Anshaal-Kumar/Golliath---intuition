@@ -1,0 +1,51 @@
+{
+  "name": "digital-twin-desktop",
+  "version": "1.0.0",
+  "description": "AI Digital Twin Intelligence Platform - Desktop Application",
+  "main": "app/main.js",
+  "author": "Your Company",
+  "license": "MIT",
+  
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux"
+  },
+  
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.0"
+  },
+  
+  "dependencies": {
+    "axios": "^1.5.0"
+  },
+  
+  "build": {
+    "appId": "com.yourcompany.digitaltwin",
+    "productName": "Digital Twin Intelligence",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app/**/*",
+      "python/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  }
+}
