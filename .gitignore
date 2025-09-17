@@ -2,3 +2,4 @@ node_modules/
 __pycache__/
 node_modules/
 __pycache__/
+digital_twin.db
