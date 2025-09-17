@@ -135,9 +135,6 @@ def detect_anomalies():
         return jsonify({
             'anomaly_count': len(anomaly_indices),
             'anomaly_indices': anomaly_indices,
-        return jsonify({
-            'anomaly_count': len(anomaly_indices),
-            'anomaly_indices': anomaly_indices,
             'anomalies': anomalies.to_dict('records') if not anomalies.empty else []
         })
     
