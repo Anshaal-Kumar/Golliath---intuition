@@ -69,7 +69,7 @@ function startPythonBackend() {
     console.log('Starting Python backend...');
     
     // Check if Python is available
-    const pythonCommands = ['python3', 'python', 'py'];
+    const pythonCommands = ['python', 'py', 'python3'];
     const scriptPath = path.join(__dirname, '..', 'python', 'api_server.py');
     
     console.log('Python script path:', scriptPath);
