@@ -1,7 +1,7 @@
 # Golliath---intuition
 Golliath---intuition
 
-9/17/2025 - ADD PRODUCTS PAGE AND PUT INTUITION is yet to be completed, due 9/18/2025 ✅
+9/19/2025 - Testing phase, due 9/27/2025 ✅
 
 GOALS
 PHASE 1 ( 2-4 weeks)
