@@ -157,13 +157,13 @@ def get_current_data():
             return jsonify({'error': 'No data loaded'}), 404
         
         response = {
-    'shape': tuple(map(int, current_data.shape)),
-    'columns': current_data.columns.tolist(),
-    'dtypes': current_data.dtypes.astype(str).to_dict(),
-    'sample': current_data.head(5).to_dict('records'),
-    'statistics': current_data.describe().to_dict()
-}
-return jsonify(safe_convert(response))
+           'shape': tuple(map(int, current_data.shape)),
+           'columns': current_data.columns.tolist(),
+           'dtypes': current_data.dtypes.astype(str).to_dict(),
+           'sample': current_data.head(5).to_dict('records'),
+           'statistics': current_data.describe().to_dict()
+        }
+        return jsonify(safe_convert(response))
 
         
     except Exception as e:
