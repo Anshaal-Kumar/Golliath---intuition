@@ -11,7 +11,6 @@ from flask_cors import CORS
 import pandas as pd
 import numpy as np
 from io import StringIO
-import base64
 import io
 
 # 🔧 Force stdout/stderr to UTF-8 (fixes Windows 'charmap' codec errors with emojis/logs)
@@ -24,22 +23,18 @@ from digital_twin_core import DataIngestionEngine, AIProcessingEngine, OntologyE
 def analyze_csv_structure(csv_content):
     """Analyze CSV structure for debugging"""
     lines = csv_content.split('\n')[:10]  # First 10 lines
-    
     analysis = {
         'total_lines': len(csv_content.split('\n')),
         'first_10_lines': lines,
         'separators_found': {}
     }
-    
-    # Check for different separators
     for sep in [',', ';', '\t', '|']:
         counts = [line.count(sep) for line in lines if line.strip()]
         if counts:
             analysis['separators_found'][sep] = {
                 'avg_count': sum(counts) / len(counts),
-                'consistent': len(set(counts)) <= 2  # Allow for header difference
+                'consistent': len(set(counts)) <= 2
             }
-    
     return analysis
 
 # Initialize Flask app
@@ -52,6 +47,9 @@ ai_engine = AIProcessingEngine()
 ontology_engine = OntologyEngine()
 simulation_engine = SimulationEngine()
 
+# --------------------------
+# Helper: Safe convert for JSON serialization
+# --------------------------
 def safe_convert(obj):
     if isinstance(obj, (np.int64, np.int32)):
         return int(obj)
@@ -65,38 +63,25 @@ def safe_convert(obj):
         return {k: safe_convert(v) for k, v in obj.items()}
     return obj
 
+# --------------------------
 # Global state
+# --------------------------
 current_data = None
 current_insights = None
 
-@app.route('/api/data/current', methods=['GET'])
-def get_current_data():
-    global current_data
-    
-    try:
-        if current_data is None:
-            return jsonify({'error': 'No data loaded'}), 404
-        
-        response = {
-            'shape': tuple(map(int, current_data.shape)),
-            'columns': current_data.columns.tolist(),
-            'dtypes': current_data.dtypes.astype(str).to_dict(),
-            'sample': current_data.head(5).to_dict('records'),
-            'statistics': current_data.describe().to_dict()
-        }
-
-        # ✅ recursively convert all numpy types
-        response = safe_convert(response)
-
-        return jsonify(response)
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
+# --------------------------
+# Routes
+# --------------------------
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'version': '1.0.0'
+    })
 
 @app.route('/api/data/ingest', methods=['POST'])
 def ingest_data():
-    """Ingest CSV content and process"""
     global current_data, current_insights
 
     try:
@@ -109,7 +94,7 @@ def ingest_data():
         csv_analysis = analyze_csv_structure(csv_content)
         print("📊 CSV Analysis:", json.dumps(csv_analysis, indent=2))
 
-        # --- CSV parsing with multiple strategies ---
+        # --- CSV parsing strategies ---
         current_data = None
         parsing_strategies = [
             {'sep': ',', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
@@ -135,13 +120,12 @@ def ingest_data():
         current_data.columns = [col.strip().replace('\n','').replace('\r','') for col in current_data.columns]
         current_data = current_data.dropna(how='all')
 
-        # Sanitize all string cells to UTF-8 safely
+        # Sanitize string cells
         current_data = current_data.applymap(
-            lambda x: str(x).encode('utf-8', errors='ignore').decode('utf-8') 
-            if isinstance(x, str) else x
+            lambda x: str(x).encode('utf-8', errors='ignore').decode('utf-8') if isinstance(x, str) else x
         )
 
-        # Process with AI
+        # AI processing
         processed_data = ai_engine.clean_and_process(current_data)
         current_insights = ai_engine.extract_patterns(processed_data)
 
@@ -162,10 +146,8 @@ def ingest_data():
             'traceback': traceback.format_exc()
         }), 500
 
-
 @app.route('/api/data/current', methods=['GET'])
 def get_current_data():
-    """Get current dataset info"""
     global current_data
     
     try:
@@ -173,28 +155,21 @@ def get_current_data():
             return jsonify({'error': 'No data loaded'}), 404
         
         response = {
-           'shape': tuple(map(int, current_data.shape)),
-           'columns': current_data.columns.tolist(),
-           'dtypes': current_data.dtypes.astype(str).to_dict(),
-           'sample': current_data.head(5).to_dict('records'),
-           'statistics': current_data.describe().to_dict()
+            'shape': tuple(map(int, current_data.shape)),
+            'columns': current_data.columns.tolist(),
+            'dtypes': current_data.dtypes.astype(str).to_dict(),
+            'sample': current_data.head(5).to_dict('records'),
+            'statistics': current_data.describe().to_dict()
         }
         return jsonify(safe_convert(response))
 
-        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-# -----------------------
-# Other endpoints remain unchanged
-# -----------------------
-
-# (keep your other routes: analyze_patterns, detect_anomalies, get_knowledge_graph, query_ontology,
-# build_model, generate_forecast, run_what_if, assess_risk, chat_query, system_status, etc.)
-
+# --------------------------
+# Main
+# --------------------------
 def main():
-    """Start the API server"""
     parser = argparse.ArgumentParser(description='Digital Twin Intelligence API Server')
     parser.add_argument('--host', default='localhost', help='Host to bind to')
     parser.add_argument('--port', type=int, default=8501, help='Port to bind to')
