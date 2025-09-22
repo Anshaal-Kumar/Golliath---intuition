@@ -126,11 +126,11 @@ def ingest_data():
         csv_analysis = analyze_csv_structure(csv_content)
         print("📊 CSV Analysis:", json.dumps(csv_analysis, indent=2))
 
-current_data = None
-parsing_strategies = [
-    {'sep': ',', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
-    {'sep': ';', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
-    {'sep': '\t', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+    current_data = None
+    parsing_strategies = [
+       {'sep': ',', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+       {'sep': ';', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+       {'sep': '\t', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
 ]
 
 for i, strategy in enumerate(parsing_strategies):
