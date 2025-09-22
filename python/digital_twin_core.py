@@ -63,13 +63,45 @@ class DataIngestionEngine:
         conn.commit()
         conn.close()
     
-    def ingest_csv(self, file_path_or_data, source_name):
-        """Ingest data from CSV"""
-        try:
-            if isinstance(file_path_or_data, str):
-                df = pd.read_csv(file_path_or_data)
-            else:
-                df = pd.read_csv(file_path_or_data)
+def ingest_csv(self, file_path_or_data, source_name):
+    """Ingest data from CSV with robust parsing"""
+    try:
+        # Multiple CSV parsing strategies
+        csv_read_options = [
+            # Standard CSV
+            {'sep': ',', 'engine': 'python', 'error_bad_lines': False, 'warn_bad_lines': True},
+            # Semicolon separated
+            {'sep': ';', 'engine': 'python', 'error_bad_lines': False, 'warn_bad_lines': True},
+            # Tab separated
+            {'sep': '\t', 'engine': 'python', 'error_bad_lines': False, 'warn_bad_lines': True},
+            # Auto-detect separator
+            {'sep': None, 'engine': 'python', 'error_bad_lines': False, 'warn_bad_lines': True},
+            # Skip bad lines entirely
+            {'sep': ',', 'engine': 'python', 'error_bad_lines': False, 'warn_bad_lines': False, 'on_bad_lines': 'skip'}
+        ]
+        
+        df = None
+        error_messages = []
+        
+        for i, options in enumerate(csv_read_options):
+            try:
+                print(f"Trying CSV parsing method {i+1}: {options}")
+                
+                if isinstance(file_path_or_data, str):
+                    df = pd.read_csv(file_path_or_data, **options)
+                else:
+                    df = pd.read_csv(file_path_or_data, **options)
+                
+                if len(df) > 0:
+                    print(f"✅ Successfully parsed CSV with method {i+1}")
+                    print(f"Shape: {df.shape}, Columns: {list(df.columns)}")
+                    break
+            except Exception as e:
+                error_messages.append(f"Method {i+1}: {str(e)}")
+                continue
+        
+        if df is None or len(df) == 0:
+            raise Exception(f"Failed to parse CSV with all methods. Errors: {'; '.join(error_messages)}")
             
             # Store in database
             conn = sqlite3.connect(self.db_path)

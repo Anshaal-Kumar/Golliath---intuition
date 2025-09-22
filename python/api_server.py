@@ -16,6 +16,27 @@ import base64
 # Import our core engines
 from digital_twin_core import DataIngestionEngine, AIProcessingEngine, OntologyEngine, SimulationEngine
 
+def analyze_csv_structure(csv_content):
+    """Analyze CSV structure for debugging"""
+    lines = csv_content.split('\n')[:10]  # First 10 lines
+    
+    analysis = {
+        'total_lines': len(csv_content.split('\n')),
+        'first_10_lines': lines,
+        'separators_found': {}
+    }
+    
+    # Check for different separators
+    for sep in [',', ';', '\t', '|']:
+        counts = [line.count(sep) for line in lines if line.strip()]
+        if counts:
+            analysis['separators_found'][sep] = {
+                'avg_count': sum(counts) / len(counts),
+                'consistent': len(set(counts)) <= 2  # Allow for header difference
+            }
+    
+    return analysis
+
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)
@@ -51,9 +72,56 @@ def ingest_data():
         
         if not csv_content:
             return jsonify({'error': 'No CSV content provided'}), 400
+
+            if not csv_content:
+    return jsonify({'error': 'No CSV content provided'}), 400
+
+# DEBUG LINE HERE:
+csv_analysis = analyze_csv_structure(csv_content)
+print("📊 CSV Analysis:", json.dumps(csv_analysis, indent=2))
+
+# Convert CSV string to DataFrame
+current_data = pd.read_csv(StringIO(csv_content))
         
-        # Convert CSV string to DataFrame
-        current_data = pd.read_csv(StringIO(csv_content))
+# Convert CSV string to DataFrame with robust parsing
+try:
+    # Try multiple parsing strategies
+    parsing_strategies = [
+        {'sep': ',', 'engine': 'python'},
+        {'sep': ';', 'engine': 'python'}, 
+        {'sep': '\t', 'engine': 'python'},
+        {'sep': ',', 'engine': 'python', 'quotechar': '"'},
+        {'sep': ',', 'engine': 'python', 'skipinitialspace': True},
+        {'sep': ',', 'engine': 'python', 'error_bad_lines': False, 'warn_bad_lines': False}
+    ]
+    
+    current_data = None
+    for i, strategy in enumerate(parsing_strategies):
+        try:
+            print(f"Trying parsing strategy {i+1}: {strategy}")
+            current_data = pd.read_csv(StringIO(csv_content), **strategy)
+            
+            if len(current_data) > 0 and len(current_data.columns) > 0:
+                print(f"✅ Success with strategy {i+1}. Shape: {current_data.shape}")
+                break
+        except Exception as e:
+            print(f"❌ Strategy {i+1} failed: {str(e)}")
+            continue
+    
+    if current_data is None or len(current_data) == 0:
+        return jsonify({'error': 'Could not parse CSV file. Please check the format.'}), 400
+    
+    # Clean up column names (remove extra spaces, special chars)
+    current_data.columns = [col.strip().replace('\n', '').replace('\r', '') for col in current_data.columns]
+    
+    # Remove completely empty rows
+    current_data = current_data.dropna(how='all')
+    
+except Exception as parse_error:
+    return jsonify({
+        'error': f'CSV parsing failed: {str(parse_error)}. Please check your CSV format.',
+        'suggestion': 'Try saving your file as a standard CSV with comma separators.'
+    }), 400
         
         # Store in database (simplified for now)
         # In production, you'd properly store this
