@@ -132,13 +132,17 @@ def ingest_data():
         # Build knowledge graph
         ontology_engine.build_knowledge_graph(processed_data, current_insights)
 
-        return jsonify({
-            'success': True,
-            'message': f'Successfully ingested {len(current_data)} rows',
-            'rows': len(current_data),
-            'columns': len(current_data.columns),
-            'column_names': current_data.columns.tolist()
-        })
+       # Inside ingest_data(), replace the return statement at the end with:
+
+    return jsonify(safe_convert({
+        'success': True,
+        'message': f'Successfully ingested {len(current_data)} rows',
+        'rows': len(current_data),
+        'columns': len(current_data.columns),
+        'column_names': current_data.columns.tolist(),
+        'insights': current_insights  # safely convert any NumPy types
+    }))
+
 
     except Exception as e:
         return jsonify({
