@@ -52,6 +52,19 @@ ai_engine = AIProcessingEngine()
 ontology_engine = OntologyEngine()
 simulation_engine = SimulationEngine()
 
+def safe_convert(obj):
+    if isinstance(obj, (np.int64, np.int32)):
+        return int(obj)
+    if isinstance(obj, (np.float64, np.float32)):
+        return float(obj)
+    if isinstance(obj, (np.bool_)):
+        return bool(obj)
+    if isinstance(obj, (np.ndarray, list)):
+        return [safe_convert(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: safe_convert(v) for k, v in obj.items()}
+    return obj
+
 # Global state
 current_data = None
 current_insights = None
@@ -143,13 +156,16 @@ def get_current_data():
         if current_data is None:
             return jsonify({'error': 'No data loaded'}), 404
         
-        return jsonify({
-            'shape': current_data.shape,
-            'columns': current_data.columns.tolist(),
-            'dtypes': current_data.dtypes.astype(str).to_dict(),
-            'sample': current_data.head(5).to_dict('records'),
-            'statistics': current_data.describe().to_dict()
-        })
+        response = {
+    'shape': tuple(map(int, current_data.shape)),
+    'columns': current_data.columns.tolist(),
+    'dtypes': current_data.dtypes.astype(str).to_dict(),
+    'sample': current_data.head(5).to_dict('records'),
+    'statistics': current_data.describe().to_dict()
+}
+return jsonify(safe_convert(response))
+
+        
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
