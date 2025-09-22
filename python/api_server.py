@@ -12,6 +12,11 @@ import pandas as pd
 import numpy as np
 from io import StringIO
 import base64
+import io
+
+# 🔧 Force stdout/stderr to UTF-8 (fixes Windows 'charmap' codec errors with emojis/logs)
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
 
 # Import our core engines
 from digital_twin_core import DataIngestionEngine, AIProcessingEngine, OntologyEngine, SimulationEngine
