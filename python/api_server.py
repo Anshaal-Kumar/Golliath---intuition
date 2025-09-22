@@ -126,25 +126,25 @@ def ingest_data():
         csv_analysis = analyze_csv_structure(csv_content)
         print("📊 CSV Analysis:", json.dumps(csv_analysis, indent=2))
 
-        # Multiple parsing strategies with UTF-8 enforced
-        parsing_strategies = [
-            {'sep': ',', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
-            {'sep': ';', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
-            {'sep': '\t', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
-        ]
+current_data = None
+parsing_strategies = [
+    {'sep': ',', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+    {'sep': ';', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+    {'sep': '\t', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+]
 
-        current_data = None
-        for i, strategy in enumerate(parsing_strategies):
-            try:
-                print(f"Trying parsing strategy {i+1}: {strategy}")
-                # Ensure bytes/str conversion safe for UTF-8
-                current_data = pd.read_csv(StringIO(csv_content), **strategy)
-                if len(current_data) > 0 and len(current_data.columns) > 0:
-                    print(f"✅ Success with strategy {i+1}. Shape: {current_data.shape}")
-                    break
-            except Exception as e:
-                print(f"❌ Strategy {i+1} failed: {str(e)}")
-                continue
+for i, strategy in enumerate(parsing_strategies):
+    try:
+        current_data = pd.read_csv(StringIO(csv_content), **strategy)
+        if len(current_data) > 0 and len(current_data.columns) > 0:
+            break
+    except Exception as e:
+        continue
+
+# Sanitize all string columns to UTF-8 safely
+current_data = current_data.applymap(
+    lambda x: str(x).encode('utf-8', errors='ignore').decode('utf-8') if isinstance(x, str) else x
+)
 
         if current_data is None or len(current_data) == 0:
             return jsonify({'error': 'Could not parse CSV file. Please check the format.'}), 400
