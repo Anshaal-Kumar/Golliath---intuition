@@ -74,7 +74,7 @@ def ingest_data():
             return jsonify({'error': 'No CSV content provided'}), 400
 
             if not csv_content:
-    return jsonify({'error': 'No CSV content provided'}), 400
+               return jsonify({'error': 'No CSV content provided'}), 400
 
 # DEBUG LINE HERE:
 csv_analysis = analyze_csv_structure(csv_content)
