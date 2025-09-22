@@ -64,64 +64,68 @@ def health_check():
 def ingest_data():
     """Ingest CSV data"""
     global current_data, current_insights
-    
+
     try:
         data = request.get_json()
         csv_content = data.get('csv_content')
         source_name = data.get('source_name', 'unknown')
-        
+
         if not csv_content:
             return jsonify({'error': 'No CSV content provided'}), 400
 
-            if not csv_content:
-               return jsonify({'error': 'No CSV content provided'}), 400
+        # DEBUG LINE HERE:
+        csv_analysis = analyze_csv_structure(csv_content)
+        print("📊 CSV Analysis:", json.dumps(csv_analysis, indent=2))
 
-# DEBUG LINE HERE:
-csv_analysis = analyze_csv_structure(csv_content)
-print("📊 CSV Analysis:", json.dumps(csv_analysis, indent=2))
+        # Try multiple parsing strategies
+        parsing_strategies = [
+            {'sep': ',', 'engine': 'python'},
+            {'sep': ';', 'engine': 'python'},
+            {'sep': '\t', 'engine': 'python'},
+            {'sep': ',', 'engine': 'python', 'quotechar': '"'},
+            {'sep': ',', 'engine': 'python', 'skipinitialspace': True},
+            # remove deprecated params warn_bad_lines/error_bad_lines
+        ]
 
-# Convert CSV string to DataFrame
-current_data = pd.read_csv(StringIO(csv_content))
-        
-# Convert CSV string to DataFrame with robust parsing
-try:
-    # Try multiple parsing strategies
-    parsing_strategies = [
-        {'sep': ',', 'engine': 'python'},
-        {'sep': ';', 'engine': 'python'}, 
-        {'sep': '\t', 'engine': 'python'},
-        {'sep': ',', 'engine': 'python', 'quotechar': '"'},
-        {'sep': ',', 'engine': 'python', 'skipinitialspace': True},
-        {'sep': ',', 'engine': 'python', 'error_bad_lines': False, 'warn_bad_lines': False}
-    ]
-    
-    current_data = None
-    for i, strategy in enumerate(parsing_strategies):
-        try:
-            print(f"Trying parsing strategy {i+1}: {strategy}")
-            current_data = pd.read_csv(StringIO(csv_content), **strategy)
-            
-            if len(current_data) > 0 and len(current_data.columns) > 0:
-                print(f"✅ Success with strategy {i+1}. Shape: {current_data.shape}")
-                break
-        except Exception as e:
-            print(f"❌ Strategy {i+1} failed: {str(e)}")
-            continue
-    
-    if current_data is None or len(current_data) == 0:
-        return jsonify({'error': 'Could not parse CSV file. Please check the format.'}), 400
-    
-    # Clean up column names (remove extra spaces, special chars)
-    current_data.columns = [col.strip().replace('\n', '').replace('\r', '') for col in current_data.columns]
-    
-    # Remove completely empty rows
-    current_data = current_data.dropna(how='all')
-    
-except Exception as parse_error:
-    return jsonify({
-        'error': f'CSV parsing failed: {str(parse_error)}. Please check your CSV format.',
-        'suggestion': 'Try saving your file as a standard CSV with comma separators.'
-    }), 400
+        current_data = None
+        for i, strategy in enumerate(parsing_strategies):
+            try:
+                print(f"Trying parsing strategy {i+1}: {strategy}")
+                current_data = pd.read_csv(StringIO(csv_content), **strategy)
+                if len(current_data) > 0 and len(current_data.columns) > 0:
+                    print(f"✅ Success with strategy {i+1}. Shape: {current_data.shape}")
+                    break
+            except Exception as e:
+                print(f"❌ Strategy {i+1} failed: {str(e)}")
+                continue
+
+        if current_data is None or len(current_data) == 0:
+            return jsonify({'error': 'Could not parse CSV file. Please check the format.'}), 400
+
+        # Clean columns and remove empty rows
+        current_data.columns = [col.strip().replace('\n', '').replace('\r', '') for col in current_data.columns]
+        current_data = current_data.dropna(how='all')
+
+        # Process with AI
+        processed_data = ai_engine.clean_and_process(current_data)
+        current_insights = ai_engine.extract_patterns(processed_data)
+
+        # Build knowledge graph
+        ontology_engine.build_knowledge_graph(processed_data, current_insights)
+
+        return jsonify({
+            'success': True,
+            'message': f'Successfully ingested {len(current_data)} rows',
+            'rows': len(current_data),
+            'columns': len(current_data.columns),
+            'column_names': current_data.columns.tolist()
+        })
+
+    except Exception as e:
+        return jsonify({
+            'error': f'Data ingestion failed: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
         
         # Store in database (simplified for now)
         # In production, you'd properly store this
