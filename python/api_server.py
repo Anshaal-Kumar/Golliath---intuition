@@ -69,14 +69,30 @@ def safe_convert(obj):
 current_data = None
 current_insights = None
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'version': '1.0.0'
-    })
+@app.route('/api/data/current', methods=['GET'])
+def get_current_data():
+    global current_data
+    
+    try:
+        if current_data is None:
+            return jsonify({'error': 'No data loaded'}), 404
+        
+        response = {
+            'shape': tuple(map(int, current_data.shape)),
+            'columns': current_data.columns.tolist(),
+            'dtypes': current_data.dtypes.astype(str).to_dict(),
+            'sample': current_data.head(5).to_dict('records'),
+            'statistics': current_data.describe().to_dict()
+        }
+
+        # ✅ recursively convert all numpy types
+        response = safe_convert(response)
+
+        return jsonify(response)
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/data/ingest', methods=['POST'])
 def ingest_data():
