@@ -62,31 +62,27 @@ def health_check():
 
 @app.route('/api/data/ingest', methods=['POST'])
 def ingest_data():
-    """Ingest CSV data"""
+    """Ingest CSV content and process"""
     global current_data, current_insights
 
     try:
         data = request.get_json()
         csv_content = data.get('csv_content')
-        source_name = data.get('source_name', 'unknown')
-
         if not csv_content:
             return jsonify({'error': 'No CSV content provided'}), 400
 
-        # Debugging CSV structure
+        # DEBUG: CSV structure analysis
         csv_analysis = analyze_csv_structure(csv_content)
         print("📊 CSV Analysis:", json.dumps(csv_analysis, indent=2))
 
-        # Try multiple parsing strategies
+        # --- CSV parsing with multiple strategies ---
+        current_data = None
         parsing_strategies = [
-            {'sep': ',', 'engine': 'python'},
-            {'sep': ';', 'engine': 'python'},
-            {'sep': '\t', 'engine': 'python'},
-            {'sep': ',', 'engine': 'python', 'quotechar': '"'},
-            {'sep': ',', 'engine': 'python', 'skipinitialspace': True},
+            {'sep': ',', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+            {'sep': ';', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
+            {'sep': '\t', 'encoding': 'utf-8', 'engine': 'python', 'on_bad_lines': 'skip'},
         ]
 
-        current_data = None
         for i, strategy in enumerate(parsing_strategies):
             try:
                 print(f"Trying parsing strategy {i+1}: {strategy}")
@@ -95,15 +91,21 @@ def ingest_data():
                     print(f"✅ Success with strategy {i+1}. Shape: {current_data.shape}")
                     break
             except Exception as e:
-                print(f"❌ Strategy {i+1} failed: {str(e)}")
+                print(f"❌ Strategy {i+1} failed: {e}")
                 continue
 
         if current_data is None or len(current_data) == 0:
             return jsonify({'error': 'Could not parse CSV file. Please check the format.'}), 400
 
         # Clean columns and remove empty rows
-        current_data.columns = [col.strip().replace('\n', '').replace('\r', '') for col in current_data.columns]
+        current_data.columns = [col.strip().replace('\n','').replace('\r','') for col in current_data.columns]
         current_data = current_data.dropna(how='all')
+
+        # Sanitize all string cells to UTF-8 safely
+        current_data = current_data.applymap(
+            lambda x: str(x).encode('utf-8', errors='ignore').decode('utf-8') 
+            if isinstance(x, str) else x
+        )
 
         # Process with AI
         processed_data = ai_engine.clean_and_process(current_data)
