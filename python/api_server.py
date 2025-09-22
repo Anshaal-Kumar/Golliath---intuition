@@ -2,7 +2,6 @@
 # python/api_server.py - Complete Python API Server
 import argparse
 import sys
-import os
 import json
 import traceback
 from datetime import datetime
@@ -13,16 +12,19 @@ import numpy as np
 from io import StringIO
 import io
 
-# 🔧 Force stdout/stderr to UTF-8 (fixes Windows 'charmap' codec errors with emojis/logs)
+# 🔧 Force stdout/stderr to UTF-8 (Windows fix)
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignore')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
 
 # Import our core engines
 from digital_twin_core import DataIngestionEngine, AIProcessingEngine, OntologyEngine, SimulationEngine
 
+# --------------------------
+# Helper functions
+# --------------------------
 def analyze_csv_structure(csv_content):
     """Analyze CSV structure for debugging"""
-    lines = csv_content.split('\n')[:10]  # First 10 lines
+    lines = csv_content.split('\n')[:10]
     analysis = {
         'total_lines': len(csv_content.split('\n')),
         'first_10_lines': lines,
@@ -37,20 +39,8 @@ def analyze_csv_structure(csv_content):
             }
     return analysis
 
-# Initialize Flask app
-app = Flask(__name__)
-CORS(app)
-
-# Initialize engines
-data_engine = DataIngestionEngine()
-ai_engine = AIProcessingEngine()
-ontology_engine = OntologyEngine()
-simulation_engine = SimulationEngine()
-
-# --------------------------
-# Helper: Safe convert for JSON serialization
-# --------------------------
 def safe_convert(obj):
+    """Recursively convert NumPy types to Python types for JSON"""
     if isinstance(obj, (np.int64, np.int32)):
         return int(obj)
     if isinstance(obj, (np.float64, np.float32)):
@@ -62,6 +52,20 @@ def safe_convert(obj):
     if isinstance(obj, dict):
         return {k: safe_convert(v) for k, v in obj.items()}
     return obj
+
+# --------------------------
+# Flask setup
+# --------------------------
+app = Flask(__name__)
+CORS(app)
+
+# --------------------------
+# Initialize engines
+# --------------------------
+data_engine = DataIngestionEngine()
+ai_engine = AIProcessingEngine()
+ontology_engine = OntologyEngine()
+simulation_engine = SimulationEngine()
 
 # --------------------------
 # Global state
@@ -132,17 +136,15 @@ def ingest_data():
         # Build knowledge graph
         ontology_engine.build_knowledge_graph(processed_data, current_insights)
 
-       # Inside ingest_data(), replace the return statement at the end with:
-
-    return jsonify(safe_convert({
-        'success': True,
-        'message': f'Successfully ingested {len(current_data)} rows',
-        'rows': len(current_data),
-        'columns': len(current_data.columns),
-        'column_names': current_data.columns.tolist(),
-        'insights': current_insights  # safely convert any NumPy types
-    }))
-
+        # ✅ Return response safely
+        return jsonify(safe_convert({
+            'success': True,
+            'message': f'Successfully ingested {len(current_data)} rows',
+            'rows': len(current_data),
+            'columns': len(current_data.columns),
+            'column_names': current_data.columns.tolist(),
+            'insights': current_insights
+        }))
 
     except Exception as e:
         return jsonify({
@@ -153,11 +155,10 @@ def ingest_data():
 @app.route('/api/data/current', methods=['GET'])
 def get_current_data():
     global current_data
-    
     try:
         if current_data is None:
             return jsonify({'error': 'No data loaded'}), 404
-        
+
         response = {
             'shape': tuple(map(int, current_data.shape)),
             'columns': current_data.columns.tolist(),
@@ -178,14 +179,13 @@ def main():
     parser.add_argument('--host', default='localhost', help='Host to bind to')
     parser.add_argument('--port', type=int, default=8501, help='Port to bind to')
     parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    
     args = parser.parse_args()
-    
+
     print(f"Starting Digital Twin Intelligence API Server...")
     print(f"Host: {args.host}")
     print(f"Port: {args.port}")
     print(f"Server running at: http://{args.host}:{args.port}")
-    
+
     try:
         app.run(
             host=args.host,
