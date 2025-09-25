@@ -4,3 +4,8 @@ node_modules/
 __pycache__/
 digital_twin.db
 app/node_modules/
+# Ignore SQLite temporary files
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
