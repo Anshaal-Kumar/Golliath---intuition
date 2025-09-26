@@ -668,40 +668,7 @@ def get_knowledge_graph():
             'error': f'Failed to get knowledge graph: {str(e)}'
         }), 500
 
-@app.route('/api/simulation/whatif', methods=['POST'])
-def run_whatif_analysis():
-    try:
-        data = request.get_json()
-        target_column = data.get('target_column')
-        feature_changes = data.get('feature_changes', {})
-        
-        if not target_column:
-            return safe_jsonify({'error': 'Target column not specified'}), 400
-            
-        print(f"🎭 Running what-if analysis for {target_column}")
-        print(f"Feature changes: {feature_changes}")
-        
-        result, message = simulation_engine.run_what_if_analysis(target_column, feature_changes)
-        
-        if result is None:
-            return safe_jsonify({'success': False, 'error': message}), 400
-            
-        return safe_jsonify({
-            'success': True,
-            'baseline_prediction': result['baseline_prediction'],
-            'modified_prediction': result['modified_prediction'],
-            'impact': result['impact'],
-            'percent_change': result['percent_change'],
-            'applied_changes': result['applied_changes'],
-            'message': message
-        })
-        
-    except Exception as e:
-        return safe_jsonify({
-            'success': False,
-            'error': f'What-if analysis failed: {str(e)}'
-        }), 500
-        
+
 # --------------------------
 # Main
 # --------------------------
