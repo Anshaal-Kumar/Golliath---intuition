@@ -1648,37 +1648,87 @@ class DigitalTwinApp {
             return;
         }
 
-        // Simple text-based representation of the knowledge graph
-        let html = '<div class="graph-display">';
-        html += '<h4>📊 Data Entities</h4><ul>';
-        
-        data.nodes.forEach(node => {
-            html += `<li><strong>${this.escapeHtml(node.label || node.id || 'Unknown')}</strong> (${this.escapeHtml(node.type || 'entity')})`;
-            if (node.data_type) {
-                html += ` - ${this.escapeHtml(node.data_type)}`;
-            }
-            html += '</li>';
-        });
-        
-        html += '</ul>';
+        // Prepare data for network visualization with improved positioning
+        const nodes = data.nodes.map((node, index) => ({
+            name: node.label || node.id || 'Unknown',
+            // Use circular layout for better initial positioning
+            x: Math.cos(2 * Math.PI * index / data.nodes.length),
+            y: Math.sin(2 * Math.PI * index / data.nodes.length),
+            type: 'scatter',
+            mode: 'markers+text',
+            marker: {
+                size: 20,
+                color: node.type === 'attribute' ? '#4f46e5' : '#10b981',
+                symbol: node.type === 'attribute' ? 'circle' : 'diamond',
+                line: {
+                    color: '#ffffff',
+                    width: 1
+                }
+            },
+            text: node.label || node.id,
+            textposition: 'bottom center',
+            hoverinfo: 'text',
+            hovertext: `${node.label || node.id}<br>Type: ${node.type || 'entity'}<br>Data Type: ${node.data_type || 'N/A'}`
+        }));
 
-        if (data.edges && Array.isArray(data.edges) && data.edges.length > 0) {
-            html += '<h4>🔗 Relationships</h4><ul>';
+        // Create edges as lines between nodes
+        const edges = [];
+        if (data.edges && Array.isArray(data.edges)) {
             data.edges.forEach(edge => {
-                html += `<li><strong>${this.escapeHtml(edge.source || '')}</strong> → <strong>${this.escapeHtml(edge.target || '')}</strong>`;
-                if (edge.relationship) {
-                    html += ` (${this.escapeHtml(edge.relationship)})`;
+                const sourceNode = nodes.findIndex(n => n.name === edge.source);
+                const targetNode = nodes.findIndex(n => n.name === edge.target);
+                if (sourceNode !== -1 && targetNode !== -1) {
+                    edges.push({
+                        type: 'scatter',
+                        mode: 'lines',
+                        x: [nodes[sourceNode].x, nodes[targetNode].x],
+                        y: [nodes[sourceNode].y, nodes[targetNode].y],
+                        line: {
+                            color: 'rgba(128, 128, 128, 0.5)',
+                            width: edge.strength ? edge.strength * 3 : 1
+                        },
+                        hoverinfo: 'text',
+                        hovertext: `${edge.relationship || 'Related'}<br>Strength: ${edge.strength ? edge.strength.toFixed(2) : 'N/A'}`,
+                        showlegend: false
+                    });
                 }
-                if (typeof edge.strength === 'number') {
-                    html += ` - strength: ${edge.strength.toFixed(2)}`;
-                }
-                html += '</li>';
             });
-            html += '</ul>';
         }
-        
-        html += '</div>';
-        graphContainer.innerHTML = html;
+
+        // Layout configuration
+        const layout = {
+            showlegend: false,
+            hovermode: 'closest',
+            margin: { t: 20, l: 20, r: 20, b: 20 },
+            xaxis: { 
+                showgrid: false, 
+                zeroline: false, 
+                showticklabels: false,
+                range: [-1.5, 1.5] // Set fixed range for better visualization
+            },
+            yaxis: { 
+                showgrid: false, 
+                zeroline: false, 
+                showticklabels: false,
+                range: [-1.5, 1.5], // Set fixed range for better visualization
+                scaleanchor: 'x', // Keep aspect ratio square
+                scaleratio: 1
+            },
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            autosize: true,
+            dragmode: 'pan'
+        };
+
+        // Create the plot
+        graphContainer.innerHTML = ''; // Clear existing content
+        Plotly.newPlot(graphContainer, [...edges, ...nodes], layout, {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToAdd: ['zoomIn', 'zoomOut', 'resetScale'],
+            modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+            displaylogo: false
+        });
     }
 
     displayOntologyInfo(data) {
