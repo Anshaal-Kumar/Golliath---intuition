@@ -1649,6 +1649,9 @@ class DigitalTwinApp {
         }
 
         // Add explanation text
+        // Calculate container height based on window size
+        const containerHeight = Math.max(400, window.innerHeight - 300); // Minimum 400px, adjust based on window height
+
         graphContainer.innerHTML = `
             <div class="graph-info">
                 <h4>Understanding the Knowledge Graph</h4>
@@ -1659,22 +1662,25 @@ class DigitalTwinApp {
                     <li><strong>Lines:</strong> Relationships between elements (thicker lines = stronger relationships)</li>
                 </ul>
             </div>
-            <div id="graphPlot" style="width: 100%; height: 600px;"></div>
+            <div id="graphPlot" style="width: 100%; height: ${containerHeight}px;"></div>
         `;
 
         // Prepare data for network visualization with improved positioning
         // Calculate optimal positions for nodes in a circle with spacing
-        const radius = 0.8; // Slightly smaller radius to fit better
+        const nodeCount = data.nodes.length;
+        const radius = Math.min(0.7, 0.9 - (nodeCount * 0.02)); // Adjust radius based on node count
         const nodes = data.nodes.map((node, index) => {
-            const angle = (2 * Math.PI * index) / data.nodes.length;
+            // Calculate position with slight random offset to prevent overlap
+            const angle = (2 * Math.PI * index) / nodeCount;
+            const randOffset = Math.random() * 0.1 - 0.05; // Small random offset
             return {
                 name: node.label || node.id || 'Unknown',
-                x: radius * Math.cos(angle),
-                y: radius * Math.sin(angle),
+                x: radius * Math.cos(angle) + randOffset,
+                y: radius * Math.sin(angle) + randOffset,
                 type: 'scatter',
                 mode: 'markers+text',
                 marker: {
-                    size: 30,
+                    size: Math.max(20, Math.min(30, 40 - nodeCount * 0.5)), // Adjust size based on node count
                     color: node.type === 'attribute' ? '#4f46e5' : '#10b981',
                     symbol: node.type === 'attribute' ? 'circle' : 'diamond',
                     line: {
@@ -1724,35 +1730,39 @@ class DigitalTwinApp {
             });
         }
 
-        // Enhanced layout configuration
+        // Enhanced layout configuration with better containment
         const layout = {
             showlegend: false,
             hovermode: 'closest',
-            margin: { t: 30, l: 30, r: 30, b: 30 },
+            margin: { t: 40, l: 40, r: 40, b: 40 }, // Increased margins
             xaxis: { 
                 showgrid: false, 
                 zeroline: false, 
                 showticklabels: false,
-                range: [-1.2, 1.2], // Adjusted range for better spacing
-                fixedrange: true // Prevent x-axis zoom
+                range: [-1, 1], // Tighter range
+                fixedrange: true, // Prevent x-axis zoom
+                constrain: 'domain' // Constrain to the plot area
             },
             yaxis: { 
                 showgrid: false, 
                 zeroline: false, 
                 showticklabels: false,
-                range: [-1.2, 1.2], // Adjusted range for better spacing
+                range: [-1, 1], // Tighter range
                 scaleanchor: 'x', // Keep aspect ratio square
                 scaleratio: 1,
-                fixedrange: true // Prevent y-axis zoom
+                fixedrange: true, // Prevent y-axis zoom
+                constrain: 'domain' // Constrain to the plot area
             },
             plot_bgcolor: '#ffffff',
             paper_bgcolor: '#ffffff',
             autosize: true,
             dragmode: 'pan',
             modebar: {
-                remove: ['zoomIn', 'zoomOut', 'resetScale'],
+                remove: ['zoomIn', 'zoomOut', 'resetScale', 'select2d', 'lasso2d'],
                 orientation: 'v'
-            }
+            },
+            shapes: [], // Will be used for edges to ensure they stay within bounds
+            annotations: [] // Will be used for node labels to ensure they stay within bounds
         };
 
         // Create the interactive plot

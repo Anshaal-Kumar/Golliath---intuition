@@ -101,6 +101,10 @@ body {
     padding: 20px;
     margin: 20px;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 160px);
+    overflow: hidden;
 }
 
 .graph-info {
@@ -109,6 +113,7 @@ body {
     background: #f8fafc;
     border-radius: 6px;
     border: 1px solid #e2e8f0;
+    flex-shrink: 0;
 }
 
 .graph-info h4 {
