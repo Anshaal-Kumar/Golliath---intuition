@@ -1216,9 +1216,18 @@ class DigitalTwinApp {
     }
 
     async buildModel() {
+        if (!this.currentData) {
+            this.showNotification('Please load data before building a model', 'warning');
+            return;
+        }
+
         const targetSelect = document.getElementById('targetColumn');
-        const targetColumn = targetSelect ? targetSelect.value : '';
-        
+        if (!targetSelect) {
+            this.showNotification('Target column selector not found', 'error');
+            return;
+        }
+
+        const targetColumn = targetSelect.value;
         if (!targetColumn) {
             this.showNotification('Please select a target column', 'warning');
             return;
@@ -1228,24 +1237,41 @@ class DigitalTwinApp {
         this.addActivity('Modeling', `Building model for ${targetColumn}`);
 
         try {
+            console.log(`Building model for target column: ${targetColumn}`);
+            
             const response = await fetch(`${this.serverUrl}/api/simulation/model/build`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ target_column: targetColumn })
+                body: JSON.stringify({ 
+                    target_column: targetColumn,
+                    data_shape: this.currentData ? {
+                        rows: this.currentData.shape ? this.currentData.shape[0] : 0,
+                        columns: this.currentData.columns ? this.currentData.columns.length : 0
+                    } : null
+                })
             });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            let result;
+            const responseText = await response.text();
+            try {
+                result = JSON.parse(responseText);
+            } catch (e) {
+                console.error('Failed to parse response:', responseText);
+                throw new Error('Invalid response from server');
             }
 
-            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || `HTTP ${response.status}: ${response.statusText}`);
+            }
 
             if (result.success) {
+                console.log('Model built successfully:', result);
                 this.displayModelResults(result);
                 this.models[targetColumn] = result;
                 
+                // Enable forecasting
                 const forecastBtn = document.getElementById('forecastBtn');
                 if (forecastBtn) {
                     forecastBtn.disabled = false;
@@ -1253,9 +1279,12 @@ class DigitalTwinApp {
                 
                 await this.updateSystemStats();
                 this.addActivity('Model Built', `${targetColumn} prediction model (MAE: ${result.mae.toFixed(4)})`);
+                this.showNotification(`Model built successfully! MAE: ${result.mae.toFixed(4)}`, 'success');
             } else {
-                this.showNotification(`Model building failed: ${result.error}`, 'error');
-                this.addActivity('Model Failed', result.error);
+                const errorMsg = result.error || 'Unknown error occurred';
+                this.showNotification(`Model building failed: ${errorMsg}`, 'error');
+                this.addActivity('Model Failed', errorMsg);
+                console.error('Model building failed:', errorMsg);
             }
         } catch (error) {
             console.error('Model building failed:', error);
