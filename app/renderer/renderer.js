@@ -1648,42 +1648,71 @@ class DigitalTwinApp {
             return;
         }
 
+        // Add explanation text
+        graphContainer.innerHTML = `
+            <div class="graph-info">
+                <h4>Understanding the Knowledge Graph</h4>
+                <p>This visualization shows how your data elements are connected:</p>
+                <ul>
+                    <li><span class="legend-dot" style="background: #4f46e5"></span> <strong>Data Attributes:</strong> Your dataset columns (circles)</li>
+                    <li><span class="legend-dot" style="background: #10b981"></span> <strong>Entities:</strong> Identified patterns or clusters (diamonds)</li>
+                    <li><strong>Lines:</strong> Relationships between elements (thicker lines = stronger relationships)</li>
+                </ul>
+            </div>
+            <div id="graphPlot" style="width: 100%; height: 600px;"></div>
+        `;
+
         // Prepare data for network visualization with improved positioning
-        const nodes = data.nodes.map((node, index) => ({
-            name: node.label || node.id || 'Unknown',
-            // Use circular layout for better initial positioning
-            x: Math.cos(2 * Math.PI * index / data.nodes.length),
-            y: Math.sin(2 * Math.PI * index / data.nodes.length),
-            type: 'scatter',
-            mode: 'markers+text',
-            marker: {
-                size: 20,
-                color: node.type === 'attribute' ? '#4f46e5' : '#10b981',
-                symbol: node.type === 'attribute' ? 'circle' : 'diamond',
-                line: {
-                    color: '#ffffff',
-                    width: 1
-                }
-            },
-            text: node.label || node.id,
-            textposition: 'bottom center',
-            hoverinfo: 'text',
-            hovertext: `${node.label || node.id}<br>Type: ${node.type || 'entity'}<br>Data Type: ${node.data_type || 'N/A'}`
-        }));
+        // Calculate optimal positions for nodes in a circle with spacing
+        const radius = 0.8; // Slightly smaller radius to fit better
+        const nodes = data.nodes.map((node, index) => {
+            const angle = (2 * Math.PI * index) / data.nodes.length;
+            return {
+                name: node.label || node.id || 'Unknown',
+                x: radius * Math.cos(angle),
+                y: radius * Math.sin(angle),
+                type: 'scatter',
+                mode: 'markers+text',
+                marker: {
+                    size: 30,
+                    color: node.type === 'attribute' ? '#4f46e5' : '#10b981',
+                    symbol: node.type === 'attribute' ? 'circle' : 'diamond',
+                    line: {
+                        color: '#ffffff',
+                        width: 2
+                    }
+                },
+                text: node.label || node.id,
+                textposition: 'bottom center',
+                textfont: {
+                    size: 12,
+                    color: '#1a1a1a'
+                },
+                hoverinfo: 'text',
+                hovertext: `<b>${node.label || node.id}</b><br>Type: ${node.type || 'entity'}<br>Data Type: ${node.data_type || 'N/A'}`
+            };
+        });
 
         // Create edges as lines between nodes
+        // Create edges with improved styling
         const edges = [];
         if (data.edges && Array.isArray(data.edges)) {
             data.edges.forEach(edge => {
                 const sourceNode = nodes.findIndex(n => n.name === edge.source);
                 const targetNode = nodes.findIndex(n => n.name === edge.target);
                 if (sourceNode !== -1 && targetNode !== -1) {
+                    // Calculate edge weight and use it for line thickness
+                    const weight = edge.weight || 1;
+                    const thickness = Math.max(1, Math.min(5, weight * 2)); // Scale weight to 1-5 px
+                    
                     edges.push({
                         type: 'scatter',
                         mode: 'lines',
                         x: [nodes[sourceNode].x, nodes[targetNode].x],
                         y: [nodes[sourceNode].y, nodes[targetNode].y],
                         line: {
+                            color: 'rgba(156, 163, 175, 0.6)', // Semi-transparent gray
+                            width: thickness,
                             color: 'rgba(128, 128, 128, 0.5)',
                             width: edge.strength ? edge.strength * 3 : 1
                         },
@@ -1695,40 +1724,122 @@ class DigitalTwinApp {
             });
         }
 
-        // Layout configuration
+        // Enhanced layout configuration
         const layout = {
             showlegend: false,
             hovermode: 'closest',
-            margin: { t: 20, l: 20, r: 20, b: 20 },
+            margin: { t: 30, l: 30, r: 30, b: 30 },
             xaxis: { 
                 showgrid: false, 
                 zeroline: false, 
                 showticklabels: false,
-                range: [-1.5, 1.5] // Set fixed range for better visualization
+                range: [-1.2, 1.2], // Adjusted range for better spacing
+                fixedrange: true // Prevent x-axis zoom
             },
             yaxis: { 
                 showgrid: false, 
                 zeroline: false, 
                 showticklabels: false,
-                range: [-1.5, 1.5], // Set fixed range for better visualization
+                range: [-1.2, 1.2], // Adjusted range for better spacing
                 scaleanchor: 'x', // Keep aspect ratio square
-                scaleratio: 1
+                scaleratio: 1,
+                fixedrange: true // Prevent y-axis zoom
             },
-            plot_bgcolor: 'rgba(0,0,0,0)',
-            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: '#ffffff',
+            paper_bgcolor: '#ffffff',
             autosize: true,
-            dragmode: 'pan'
+            dragmode: 'pan',
+            modebar: {
+                remove: ['zoomIn', 'zoomOut', 'resetScale'],
+                orientation: 'v'
+            }
         };
 
-        // Create the plot
-        graphContainer.innerHTML = ''; // Clear existing content
-        Plotly.newPlot(graphContainer, [...edges, ...nodes], layout, {
+        // Create the interactive plot
+        const plotDiv = document.createElement('div');
+        plotDiv.style.width = '100%';
+        plotDiv.style.height = '600px';
+        graphContainer.appendChild(plotDiv);
+
+        const config = {
             responsive: true,
             displayModeBar: true,
-            modeBarButtonsToAdd: ['zoomIn', 'zoomOut', 'resetScale'],
-            modeBarButtonsToRemove: ['lasso2d', 'select2d'],
-            displaylogo: false
+            modeBarButtonsToRemove: [
+                'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d',
+                'hoverClosestCartesian', 'hoverCompareCartesian'
+            ],
+            displaylogo: false,
+            doubleClick: 'reset',
+            scrollZoom: false
+        };
+
+        Plotly.newPlot(plotDiv, [...edges, ...nodes], layout, config);
+
+        // Add event listener for node click events
+        plotDiv.on('plotly_click', (data) => {
+            const point = data.points[0];
+            if (point && point.data.type === 'scatter' && point.data.mode.includes('markers')) {
+                // Highlight connected nodes and edges
+                this.highlightConnections(plotDiv, point.data.name, edges, nodes);
+            }
         });
+    }
+
+    highlightConnections(plotDiv, nodeName, edges, nodes) {
+        // Find connected nodes
+        const connectedNodes = new Set();
+        edges.forEach(edge => {
+            const xCoords = edge.x;
+            const sourceNode = nodes.find(n => n.x === xCoords[0]);
+            const targetNode = nodes.find(n => n.x === xCoords[1]);
+            
+            if (sourceNode && targetNode) {
+                if (sourceNode.name === nodeName) {
+                    connectedNodes.add(targetNode.name);
+                } else if (targetNode.name === nodeName) {
+                    connectedNodes.add(sourceNode.name);
+                }
+            }
+        });
+
+        // Update node markers
+        const updatedNodes = nodes.map(node => {
+            const isSelected = node.name === nodeName;
+            const isConnected = connectedNodes.has(node.name);
+            
+            return {
+                marker: {
+                    ...node.marker,
+                    size: isSelected ? 40 : isConnected ? 35 : 30,
+                    opacity: isSelected || isConnected ? 1 : 0.4
+                }
+            };
+        });
+
+        // Update edge styling
+        const updatedEdges = edges.map(edge => {
+            const xCoords = edge.x;
+            const sourceNode = nodes.find(n => n.x === xCoords[0]);
+            const targetNode = nodes.find(n => n.x === xCoords[1]);
+            
+            const isConnected = (sourceNode && targetNode) && 
+                              (sourceNode.name === nodeName || targetNode.name === nodeName);
+            
+            return {
+                line: {
+                    ...edge.line,
+                    opacity: isConnected ? 1 : 0.2
+                }
+            };
+        });
+
+        // Apply updates
+        Plotly.update(plotDiv, 
+            { 
+                'marker': updatedNodes.map(n => n.marker),
+                'line': updatedEdges.map(e => e.line)
+            }
+        );
     }
 
     displayOntologyInfo(data) {
