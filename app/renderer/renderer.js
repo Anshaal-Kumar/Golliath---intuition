@@ -1650,7 +1650,7 @@ class DigitalTwinApp {
 
         // Add explanation text
         // Calculate container height based on window size
-        const containerHeight = Math.max(400, window.innerHeight - 300); // Minimum 400px, adjust based on window height
+        const containerHeight = Math.max(600, window.innerHeight - 250); // Increased minimum height
 
         graphContainer.innerHTML = `
             <div class="graph-info">
@@ -1680,22 +1680,30 @@ class DigitalTwinApp {
                 type: 'scatter',
                 mode: 'markers+text',
                 marker: {
-                    size: Math.max(20, Math.min(30, 40 - nodeCount * 0.5)), // Adjust size based on node count
+                    size: Math.max(35, Math.min(45, 50 - nodeCount * 0.3)), // Increased node sizes
                     color: node.type === 'attribute' ? '#4f46e5' : '#10b981',
                     symbol: node.type === 'attribute' ? 'circle' : 'diamond',
                     line: {
                         color: '#ffffff',
-                        width: 2
+                        width: 3
                     }
                 },
                 text: node.label || node.id,
                 textposition: 'bottom center',
                 textfont: {
-                    size: 12,
-                    color: '#1a1a1a'
+                    size: 14,
+                    color: '#1a1a1a',
+                    family: 'Arial, sans-serif',
+                    weight: 600
                 },
+                textposition: 'bottom center',
                 hoverinfo: 'text',
-                hovertext: `<b>${node.label || node.id}</b><br>Type: ${node.type || 'entity'}<br>Data Type: ${node.data_type || 'N/A'}`
+                hovertext: `<b>${node.label || node.id}</b><br>Type: ${node.type || 'entity'}<br>Data Type: ${node.data_type || 'N/A'}`,
+                hoverlabel: {
+                    bgcolor: '#374151',
+                    bordercolor: '#374151',
+                    font: { size: 14, color: '#ffffff' }
+                }
             };
         });
 
@@ -1717,8 +1725,8 @@ class DigitalTwinApp {
                         x: [nodes[sourceNode].x, nodes[targetNode].x],
                         y: [nodes[sourceNode].y, nodes[targetNode].y],
                         line: {
-                            color: 'rgba(156, 163, 175, 0.6)', // Semi-transparent gray
-                            width: thickness,
+                            color: 'rgba(100, 116, 139, 0.8)', // More visible edge color
+                            width: thickness * 1.5, // Thicker lines
                             color: 'rgba(128, 128, 128, 0.5)',
                             width: edge.strength ? edge.strength * 3 : 1
                         },
@@ -1734,24 +1742,24 @@ class DigitalTwinApp {
         const layout = {
             showlegend: false,
             hovermode: 'closest',
-            margin: { t: 40, l: 40, r: 40, b: 40 }, // Increased margins
+            margin: { t: 50, l: 50, r: 50, b: 50 }, // More generous margins
             xaxis: { 
                 showgrid: false, 
                 zeroline: false, 
                 showticklabels: false,
-                range: [-1, 1], // Tighter range
+                range: [-1.1, 1.1], // Slightly wider range for better spacing
                 fixedrange: true, // Prevent x-axis zoom
-                constrain: 'domain' // Constrain to the plot area
+                constrain: 'domain', // Constrain to the plot area
             },
             yaxis: { 
                 showgrid: false, 
                 zeroline: false, 
                 showticklabels: false,
-                range: [-1, 1], // Tighter range
+                range: [-1.1, 1.1], // Slightly wider range for better spacing
                 scaleanchor: 'x', // Keep aspect ratio square
                 scaleratio: 1,
                 fixedrange: true, // Prevent y-axis zoom
-                constrain: 'domain' // Constrain to the plot area
+                constrain: 'domain', // Constrain to the plot area
             },
             plot_bgcolor: '#ffffff',
             paper_bgcolor: '#ffffff',
