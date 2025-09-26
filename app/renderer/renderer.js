@@ -1,5 +1,5 @@
 // Digital Twin Intelligence Platform - Frontend JavaScript
-// Complete desktop application logic - FIXED VERSION
+// Complete desktop application logic - ENHANCED VERSION
 
 class DigitalTwinApp {
     constructor() {
@@ -476,8 +476,9 @@ class DigitalTwinApp {
 
             if (result.success) {
                 this.displayPatternResults(result.insights);
-                const correlationCount = result.insights.correlations ? result.insights.correlations.length : 0;
-                this.addActivity('Analysis Complete', `Found ${correlationCount} correlations`);
+                const summary = result.summary || {};
+                const correlationCount = summary.strong_correlations_found || 0;
+                this.addActivity('Analysis Complete', `Found ${correlationCount} strong correlations`);
             } else {
                 this.showNotification(`Analysis failed: ${result.error}`, 'error');
                 this.addActivity('Analysis Failed', result.error);
@@ -491,31 +492,153 @@ class DigitalTwinApp {
         }
     }
 
+    // Enhanced pattern analysis display
     displayPatternResults(insights) {
         const resultsDiv = document.getElementById('patternResults');
         if (!resultsDiv) return;
 
         let html = '<div class="analysis-results">';
 
-        if (insights && insights.correlations && insights.correlations.length > 0) {
-            html += '<h4>🔗 Strong Correlations Found:</h4><ul>';
-            insights.correlations.forEach(corr => {
-                const strength = Math.abs(corr.correlation);
-                const strengthText = strength > 0.8 ? 'very strong' : strength > 0.6 ? 'strong' : 'moderate';
-                html += `<li><strong>${this.escapeHtml(corr.feature1)}</strong> ↔ <strong>${this.escapeHtml(corr.feature2)}</strong>: ${corr.correlation.toFixed(3)} (${strengthText})</li>`;
-            });
-            html += '</ul>';
-        } else {
-            html += '<p>No strong correlations found in the data.</p>';
+        // Data quality overview
+        if (insights.data_quality) {
+            const quality = insights.data_quality;
+            const qualityScore = 100 - (quality.missing_values / quality.total_rows * 100);
+            html += `
+                <div class="quality-summary">
+                    <h4>📊 Data Quality Overview</h4>
+                    <div class="quality-metrics">
+                        <span class="metric">Quality Score: <strong>${qualityScore.toFixed(1)}%</strong></span>
+                        <span class="metric">Rows: <strong>${quality.total_rows.toLocaleString()}</strong></span>
+                        <span class="metric">Columns: <strong>${quality.total_columns}</strong></span>
+                        <span class="metric">Missing: <strong>${quality.missing_values.toLocaleString()}</strong></span>
+                    </div>
+                </div>
+            `;
         }
 
-        if (insights && insights.clusters) {
-            html += `<h4>📊 Data Segmentation:</h4>`;
-            html += `<p>Discovered <strong>${insights.clusters.n_clusters}</strong> distinct patterns in your data using unsupervised clustering.</p>`;
+        // Strong correlations
+        if (insights.correlations && insights.correlations.length > 0) {
+            html += '<h4>🔗 Strong Correlations Found (≥0.5):</h4>';
+            html += '<div class="correlation-grid">';
+            
+            insights.correlations.slice(0, 10).forEach(corr => {
+                const strength = Math.abs(corr.correlation);
+                const strengthText = strength > 0.8 ? 'very strong' : 
+                                   strength > 0.6 ? 'strong' : 'moderate';
+                const strengthClass = strength > 0.8 ? 'very-strong' : 
+                                    strength > 0.6 ? 'strong' : 'moderate';
+                const direction = corr.correlation > 0 ? '↗️' : '↘️';
+                
+                html += `
+                    <div class="correlation-item ${strengthClass}">
+                        <div class="correlation-pair">
+                            <strong>${this.escapeHtml(corr.feature1)}</strong> 
+                            <span class="correlation-arrow">${direction}</span> 
+                            <strong>${this.escapeHtml(corr.feature2)}</strong>
+                        </div>
+                        <div class="correlation-strength">
+                            <span class="correlation-value">r = ${corr.correlation.toFixed(3)}</span>
+                            <span class="correlation-label">${strengthText}</span>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+
+        // Moderate correlations
+        if (insights.moderate_correlations && insights.moderate_correlations.length > 0) {
+            html += '<h4>📈 Moderate Correlations (0.3-0.5):</h4>';
+            html += '<div class="moderate-correlations">';
+            
+            insights.moderate_correlations.slice(0, 5).forEach(corr => {
+                const direction = corr.correlation > 0 ? 'positive' : 'negative';
+                html += `
+                    <div class="moderate-corr-item">
+                        <span class="corr-features">${this.escapeHtml(corr.feature1)} ↔ ${this.escapeHtml(corr.feature2)}</span>
+                        <span class="corr-value ${direction}">${corr.correlation.toFixed(3)}</span>
+                    </div>
+                `;
+            });
+            html += '</div>';
+        }
+
+        // No correlations found
+        if ((!insights.correlations || insights.correlations.length === 0) && 
+            (!insights.moderate_correlations || insights.moderate_correlations.length === 0)) {
+            
+            if (insights.correlation_summary && insights.correlation_summary.total_pairs > 0) {
+                const summary = insights.correlation_summary;
+                html += `
+                    <h4>📊 Correlation Analysis Results</h4>
+                    <div class="correlation-summary">
+                        <p><strong>Analysis Summary:</strong></p>
+                        <ul>
+                            <li>Analyzed <strong>${summary.total_pairs}</strong> feature pairs</li>
+                            <li>Maximum correlation found: <strong>${summary.max_correlation.toFixed(3)}</strong></li>
+                            <li>Average correlation: <strong>${summary.avg_correlation.toFixed(3)}</strong></li>
+                        </ul>
+                        <p class="correlation-insight">
+                            💡 <em>Your features show relatively low correlations, which suggests they capture different aspects of your data. This is often good for machine learning models!</em>
+                        </p>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <h4>🔍 No Strong Correlations Found</h4>
+                    <div class="no-correlations">
+                        <p>This could mean:</p>
+                        <ul>
+                            <li>Your features are independent (good for modeling)</li>
+                            <li>You may have mostly categorical data</li>
+                            <li>The relationships might be non-linear</li>
+                        </ul>
+                        <p class="tip">💡 Try building a predictive model to discover hidden patterns!</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Clustering results
+        if (insights.clusters) {
+            const clusters = insights.clusters;
+            html += `
+                <h4>🎯 Data Segmentation Results</h4>
+                <div class="cluster-results">
+                    <p>Discovered <strong>${clusters.n_clusters}</strong> distinct patterns in your data.</p>
+                    <div class="cluster-info">
+                        <span>Cluster sizes: <strong>[${clusters.cluster_sizes.join(', ')}]</strong></span>
+                        <span>Features used: <strong>${clusters.features_used.length}</strong></span>
+                    </div>
+                    <p class="cluster-insight">
+                        💡 <em>These clusters represent different groups in your data that behave similarly.</em>
+                    </p>
+                </div>
+            `;
+        }
+
+        // Feature variability insights
+        if (insights.feature_variability && Object.keys(insights.feature_variability).length > 0) {
+            const topVariable = Object.entries(insights.feature_variability)
+                .sort(([,a], [,b]) => b.coefficient_of_variation - a.coefficient_of_variation)[0];
+            
+            if (topVariable) {
+                html += `
+                    <h4>📏 Feature Variability</h4>
+                    <div class="variability-insight">
+                        <p>Most variable feature: <strong>${this.escapeHtml(topVariable[0])}</strong> 
+                        (CV: ${topVariable[1].coefficient_of_variation.toFixed(2)})</p>
+                        <p class="tip">💡 High variability features often contain important information for predictions.</p>
+                    </div>
+                `;
+            }
         }
 
         html += '</div>';
         resultsDiv.innerHTML = html;
+        
+        // Add enhanced styles
+        this.addAnalysisStyles();
     }
 
     async detectAnomalies() {
@@ -555,35 +678,513 @@ class DigitalTwinApp {
         }
     }
 
+    // Enhanced anomaly results display
     displayAnomalyResults(result) {
         const resultsDiv = document.getElementById('anomalyResults');
         if (!resultsDiv) return;
 
-        let html = '<div class="analysis-results">';
-        html += `<h4>🚨 Anomaly Detection Results:</h4>`;
+        let html = '<div class="analysis-results anomaly-results">';
         
         const anomalyCount = result.anomaly_count || 0;
+        const totalRecords = result.total_records || 0;
+        const anomalyRate = result.anomaly_rate || 0;
+        
+        html += '<h4>🚨 Anomaly Detection Results</h4>';
         
         if (anomalyCount > 0) {
-            const totalRecords = this.currentData && this.currentData.shape ? this.currentData.shape[0] : 1;
-            html += `<p>Found <strong>${anomalyCount}</strong> anomalous data points out of ${totalRecords} total records.</p>`;
-            html += `<p><strong>Anomaly Rate:</strong> ${((anomalyCount / totalRecords) * 100).toFixed(2)}%</p>`;
+            // Anomaly summary with visual indicators
+            html += `
+                <div class="anomaly-summary">
+                    <div class="anomaly-stat-grid">
+                        <div class="anomaly-stat">
+                            <div class="stat-number">${anomalyCount.toLocaleString()}</div>
+                            <div class="stat-label">Anomalies Found</div>
+                        </div>
+                        <div class="anomaly-stat">
+                            <div class="stat-number">${anomalyRate.toFixed(2)}%</div>
+                            <div class="stat-label">Anomaly Rate</div>
+                        </div>
+                        <div class="anomaly-stat">
+                            <div class="stat-number">${totalRecords.toLocaleString()}</div>
+                            <div class="stat-label">Total Records</div>
+                        </div>
+                    </div>
+                </div>
+            `;
             
-            if (result.anomaly_indices && result.anomaly_indices.length > 0) {
-                const displayIndices = result.anomaly_indices.slice(0, 10);
-                html += `<p><strong>Sample anomaly indices:</strong> ${displayIndices.join(', ')}`;
-                if (result.anomaly_indices.length > 10) {
-                    html += ` <em>(showing first 10 of ${result.anomaly_indices.length})</em>`;
-                }
-                html += '</p>';
+            // Severity assessment
+            let severity, severityClass, recommendation;
+            if (anomalyRate > 10) {
+                severity = 'High';
+                severityClass = 'severity-high';
+                recommendation = 'Consider reviewing data quality or adjusting sensitivity.';
+            } else if (anomalyRate > 5) {
+                severity = 'Moderate';
+                severityClass = 'severity-moderate';
+                recommendation = 'Normal level - these anomalies may represent interesting edge cases.';
+            } else {
+                severity = 'Low';
+                severityClass = 'severity-low';
+                recommendation = 'Good data quality - few outliers detected.';
             }
+            
+            html += `
+                <div class="severity-indicator ${severityClass}">
+                    <div class="severity-badge">${severity} Anomaly Level</div>
+                    <p class="severity-text">${recommendation}</p>
+                </div>
+            `;
+            
+            // Sample anomaly indices
+            if (result.anomaly_indices && result.anomaly_indices.length > 0) {
+                const displayCount = Math.min(10, result.anomaly_indices.length);
+                const sampleIndices = result.anomaly_indices.slice(0, displayCount);
+                
+                html += `
+                    <div class="anomaly-indices">
+                        <h5>🎯 Sample Anomaly Record IDs:</h5>
+                        <div class="indices-list">
+                            ${sampleIndices.map(idx => `<span class="anomaly-index">#${idx}</span>`).join('')}
+                        </div>
+                        ${result.anomaly_indices.length > displayCount ? 
+                          `<p class="more-indices">... and ${result.anomaly_indices.length - displayCount} more</p>` : ''}
+                    </div>
+                `;
+            }
+            
+            // Anomaly scores if available
+            if (result.anomaly_scores && result.threshold_score) {
+                const avgScore = result.anomaly_scores.reduce((a, b) => a + b, 0) / result.anomaly_scores.length;
+                html += `
+                    <div class="anomaly-scores">
+                        <h5>📊 Anomaly Scoring:</h5>
+                        <div class="score-metrics">
+                            <span>Threshold: <strong>${result.threshold_score.toFixed(3)}</strong></span>
+                            <span>Average Score: <strong>${avgScore.toFixed(3)}</strong></span>
+                        </div>
+                        <p class="score-explanation">Lower scores indicate more anomalous records.</p>
+                    </div>
+                `;
+            }
+            
         } else {
-            html += '<p>No anomalies detected with the current sensitivity settings.</p>';
-            html += '<p><em>Try adjusting the sensitivity slider to detect more subtle anomalies.</em></p>';
+            // No anomalies found
+            html += `
+                <div class="no-anomalies">
+                    <div class="no-anomaly-icon">✅</div>
+                    <h5>No Anomalies Detected</h5>
+                    <p>With the current sensitivity setting (<strong>${(result.contamination * 100).toFixed(1)}%</strong>), no anomalous records were found.</p>
+                    <div class="suggestions">
+                        <p><strong>Try:</strong></p>
+                        <ul>
+                            <li>Lowering the sensitivity slider to detect subtler anomalies</li>
+                            <li>This could indicate good data quality!</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
         }
         
         html += '</div>';
         resultsDiv.innerHTML = html;
+        
+        // Add enhanced styles
+        this.addAnalysisStyles();
+    }
+
+    // Add enhanced CSS styles for better analysis display
+    addAnalysisStyles() {
+        if (document.getElementById('enhanced-analysis-styles')) return;
+        
+        const styles = `
+            <style id="enhanced-analysis-styles">
+            .quality-summary {
+                background: rgba(34, 197, 94, 0.1);
+                border-left: 4px solid #22c55e;
+                padding: 16px;
+                margin-bottom: 20px;
+                border-radius: 8px;
+            }
+            
+            .quality-metrics {
+                display: flex;
+                gap: 20px;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }
+            
+            .quality-metrics .metric {
+                background: rgba(34, 197, 94, 0.2);
+                padding: 8px 12px;
+                border-radius: 16px;
+                font-size: 14px;
+            }
+            
+            .correlation-grid {
+                display: grid;
+                gap: 12px;
+                margin-top: 12px;
+            }
+            
+            .correlation-item {
+                background: rgba(59, 130, 246, 0.1);
+                border: 1px solid rgba(59, 130, 246, 0.2);
+                padding: 16px;
+                border-radius: 8px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            .correlation-item.very-strong {
+                border-color: #ef4444;
+                background: rgba(239, 68, 68, 0.1);
+            }
+            
+            .correlation-item.strong {
+                border-color: #f59e0b;
+                background: rgba(245, 158, 11, 0.1);
+            }
+            
+            .correlation-pair {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            
+            .correlation-arrow {
+                font-size: 18px;
+                color: #60a5fa;
+            }
+            
+            .correlation-strength {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-end;
+            }
+            
+            .correlation-value {
+                font-weight: bold;
+                color: #60a5fa;
+            }
+            
+            .correlation-label {
+                font-size: 12px;
+                color: #94a3b8;
+                text-transform: uppercase;
+            }
+            
+            .moderate-correlations {
+                display: grid;
+                gap: 8px;
+                margin-top: 12px;
+            }
+            
+            .moderate-corr-item {
+                background: rgba(96, 165, 250, 0.05);
+                border: 1px solid rgba(96, 165, 250, 0.1);
+                padding: 12px;
+                border-radius: 6px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            
+            .corr-features {
+                color: #e2e8f0;
+            }
+            
+            .corr-value.positive {
+                color: #22c55e;
+            }
+            
+            .corr-value.negative {
+                color: #ef4444;
+            }
+            
+            .correlation-summary {
+                background: rgba(96, 165, 250, 0.1);
+                padding: 16px;
+                border-radius: 8px;
+                border-left: 4px solid #60a5fa;
+            }
+            
+            .correlation-insight {
+                margin-top: 12px;
+                font-style: italic;
+                color: #94a3b8;
+            }
+            
+            .no-correlations {
+                background: rgba(156, 163, 175, 0.1);
+                padding: 20px;
+                border-radius: 8px;
+                text-align: center;
+            }
+            
+            .no-correlations ul {
+                text-align: left;
+                margin: 12px 0;
+            }
+            
+            .tip {
+                background: rgba(59, 130, 246, 0.1);
+                padding: 12px;
+                border-radius: 6px;
+                border-left: 3px solid #3b82f6;
+                margin-top: 12px;
+            }
+            
+            .cluster-results {
+                background: rgba(168, 85, 247, 0.1);
+                border-left: 4px solid #a855f7;
+                padding: 16px;
+                border-radius: 8px;
+            }
+            
+            .cluster-info {
+                display: flex;
+                gap: 20px;
+                margin: 12px 0;
+                font-size: 14px;
+            }
+            
+            .cluster-info span {
+                background: rgba(168, 85, 247, 0.2);
+                padding: 6px 12px;
+                border-radius: 12px;
+            }
+            
+            .cluster-insight {
+                margin-top: 12px;
+                font-style: italic;
+                color: #94a3b8;
+            }
+            
+            .variability-insight {
+                background: rgba(245, 158, 11, 0.1);
+                border-left: 4px solid #f59e0b;
+                padding: 16px;
+                border-radius: 8px;
+            }
+            
+            /* Anomaly Results Styling */
+            .anomaly-results {
+                background: linear-gradient(145deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05));
+                border: 1px solid rgba(239, 68, 68, 0.2);
+            }
+            
+            .anomaly-summary {
+                margin-bottom: 20px;
+            }
+            
+            .anomaly-stat-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+                margin-top: 16px;
+            }
+            
+            .anomaly-stat {
+                background: rgba(239, 68, 68, 0.1);
+                padding: 16px;
+                border-radius: 8px;
+                text-align: center;
+                border: 1px solid rgba(239, 68, 68, 0.2);
+            }
+            
+            .stat-number {
+                font-size: 24px;
+                font-weight: bold;
+                color: #ef4444;
+                margin-bottom: 4px;
+            }
+            
+            .stat-label {
+                font-size: 12px;
+                color: #94a3b8;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            
+            .severity-indicator {
+                padding: 16px;
+                border-radius: 8px;
+                margin: 16px 0;
+                text-align: center;
+            }
+            
+            .severity-high {
+                background: rgba(239, 68, 68, 0.15);
+                border: 2px solid #ef4444;
+            }
+            
+            .severity-moderate {
+                background: rgba(245, 158, 11, 0.15);
+                border: 2px solid #f59e0b;
+            }
+            
+            .severity-low {
+                background: rgba(34, 197, 94, 0.15);
+                border: 2px solid #22c55e;
+            }
+            
+            .severity-badge {
+                display: inline-block;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-weight: bold;
+                margin-bottom: 8px;
+            }
+            
+            .severity-high .severity-badge {
+                background: #ef4444;
+                color: white;
+            }
+            
+            .severity-moderate .severity-badge {
+                background: #f59e0b;
+                color: white;
+            }
+            
+            .severity-low .severity-badge {
+                background: #22c55e;
+                color: white;
+            }
+            
+            .severity-text {
+                margin: 0;
+                font-size: 14px;
+                color: #94a3b8;
+            }
+            
+            .anomaly-indices {
+                margin-top: 20px;
+                padding: 16px;
+                background: rgba(55, 65, 81, 0.5);
+                border-radius: 8px;
+            }
+            
+            .indices-list {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-top: 10px;
+            }
+            
+            .anomaly-index {
+                background: #ef4444;
+                color: white;
+                padding: 4px 8px;
+                border-radius: 12px;
+                font-size: 12px;
+                font-weight: 500;
+            }
+            
+            .more-indices {
+                margin-top: 10px;
+                font-style: italic;
+                color: #94a3b8;
+                font-size: 14px;
+            }
+            
+            .anomaly-scores {
+                margin-top: 20px;
+                padding: 16px;
+                background: rgba(55, 65, 81, 0.3);
+                border-radius: 8px;
+                border: 1px solid rgba(75, 85, 99, 0.3);
+            }
+            
+            .score-metrics {
+                display: flex;
+                gap: 20px;
+                margin: 10px 0;
+            }
+            
+            .score-metrics span {
+                background: rgba(96, 165, 250, 0.2);
+                padding: 6px 12px;
+                border-radius: 12px;
+                font-size: 14px;
+            }
+            
+            .score-explanation {
+                margin-top: 10px;
+                font-size: 13px;
+                color: #94a3b8;
+                font-style: italic;
+            }
+            
+            .no-anomalies {
+                text-align: center;
+                padding: 40px 20px;
+            }
+            
+            .no-anomaly-icon {
+                font-size: 48px;
+                margin-bottom: 16px;
+            }
+            
+            .no-anomalies h5 {
+                color: #22c55e;
+                margin-bottom: 12px;
+                font-size: 18px;
+            }
+            
+            .suggestions {
+                background: rgba(59, 130, 246, 0.1);
+                padding: 16px;
+                border-radius: 8px;
+                margin-top: 20px;
+                text-align: left;
+            }
+            
+            .suggestions ul {
+                margin-top: 8px;
+            }
+            
+            .suggestions li {
+                margin-bottom: 4px;
+                color: #cbd5e1;
+            }
+            
+            /* Responsive design for analysis results */
+            @media (max-width: 768px) {
+                .anomaly-stat-grid {
+                    grid-template-columns: 1fr;
+                    gap: 12px;
+                }
+                
+                .correlation-item {
+                    flex-direction: column;
+                    gap: 12px;
+                    text-align: center;
+                }
+                
+                .correlation-strength {
+                    align-items: center;
+                }
+                
+                .quality-metrics {
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                
+                .cluster-info {
+                    flex-direction: column;
+                    gap: 8px;
+                }
+                
+                .score-metrics {
+                    flex-direction: column;
+                    gap: 8px;
+                }
+            }
+            </style>
+        `;
+        
+        document.head.insertAdjacentHTML('beforeend', styles);
     }
 
     populateTargetColumns() {
