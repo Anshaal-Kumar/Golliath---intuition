@@ -9,6 +9,8 @@ PHASE 1 ( 2-4 weeks)
 - make a simple working app with basic funtionalities ✅
 - make sure it takes in data 
 - makes sure the AI chats well ✅
+- Graph visualizaton
+- Ai chat
 
 - 
 PHASE 2 ( 5-8 weeks)
