@@ -3,3 +3,6 @@ node_modules/
 
 # Ignore build output
 dist/
+ __pycache__/
+
+digital_twin.db/
