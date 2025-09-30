@@ -9,4 +9,8 @@ __pycache__/
 *.db
 
 
+# Ignore SQLite database
+python/digital_twin.db
+
+
 
