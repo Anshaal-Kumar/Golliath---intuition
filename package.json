@@ -1,0 +1,108 @@
+{
+  "name": "digital-twin-desktop",
+  "version": "1.0.0",
+  "description": "AI Digital Twin Intelligence Platform - Desktop Application",
+  "main": "app/main.js",
+  "author": "Your Company",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "postinstall": "electron-builder install-app-deps",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux",
+    "clean": "rimraf dist",
+    "rebuild": "npm run clean && npm install && npm run build"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.9.1",
+    "rimraf": "^5.0.5"
+  },
+  "dependencies": {
+    "axios": "^1.6.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "build": {
+    "appId": "com.yourcompany.digitaltwin",
+    "productName": "Digital Twin Intelligence",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "app/**/*",
+      "python/**/*",
+      "!python/**/__pycache__/**/*",
+      "!python/**/*.pyc",
+      "node_modules/**/*",
+      "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!node_modules/*.d.ts",
+      "!node_modules/.bin",
+      "!**/*.{iml,o,hprof,orig,pyc,pyo,rbc,swp,csproj,sln,xproj}",
+      "!.editorconfig",
+      "!**/._*",
+      "!**/{.DS_Store,.git,.hg,.svn,CVS,RCS,SCCS,.gitignore,.gitattributes}",
+      "!**/{__pycache__,thumbs.db,.flowconfig,.idea,.vs,.nyc_output}",
+      "!**/{appveyor.yml,.travis.yml,circle.yml}",
+      "!**/{npm-debug.log,yarn.lock,.yarn-integrity,.yarn-metadata.json}"
+    ],
+    "extraResources": [
+      {
+        "from": "python/",
+        "to": "python/",
+        "filter": [
+          "**/*",
+          "!**/__pycache__/**/*",
+          "!**/*.pyc"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.developer-tools"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}
