@@ -2378,7 +2378,8 @@ displayWhatIfResults(analysis) {
 const nodeCount = data.nodes.length;
 const minRadius = 1.5; // Minimum radius
 const maxRadius = 3.0; // Maximum radius
-const radius = Math.max(minRadius, Math.min(maxRadius, nodeCount * 0.3)); // Scale with node count
+// Better approach - use D3 force simulation or increase base radius
+const radius = Math.max(2.0, Math.min(4.0, Math.sqrt(nodeCount) * 0.8));
 
 const nodes = data.nodes.map((node, index) => {
     // Create concentric circles for better distribution
