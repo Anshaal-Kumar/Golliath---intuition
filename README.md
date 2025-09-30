@@ -1,7 +1,7 @@
 # Golliath---intuition
 Golliath---intuition
 
-9/19/2025 - Testing phase, due 9/30/2025 ✅
+9/30/2025 - phase 2 - Algo, due 10/5/2025 ✅
 
 GOALS
 PHASE 1 ( 2-4 weeks)
