@@ -692,46 +692,6 @@ class SimulationEngine:
             return None, f"SHAP analysis failed: {str(e)}"
     
     
-
-     def explain_model(self, target_column, sample_size=100):
-        """Generate SHAP explanations for model predictions"""
-        if target_column not in self.models:
-            return None, f"No model found for '{target_column}'"
-        
-        try:
-            model_info = self.models[target_column]
-            model = model_info['model']
-            features = model_info['features']
-            
-            # Create sample data for explanation
-            np.random.seed(42)
-            sample_data = np.random.randn(sample_size, len(features))
-            sample_df = pd.DataFrame(sample_data, columns=features)
-            
-            # Calculate SHAP values
-            explainer = shap.TreeExplainer(model)
-            shap_values = explainer.shap_values(sample_df)
-            
-            # Calculate feature importance from SHAP
-            feature_importance = {}
-            for i, feature in enumerate(features):
-                feature_importance[feature] = float(np.abs(shap_values[:, i]).mean())
-            
-            # Sort by importance
-            sorted_importance = dict(sorted(feature_importance.items(), 
-                                          key=lambda x: x[1], 
-                                          reverse=True))
-            
-            return {
-                'feature_importance': sorted_importance,
-                'shap_base_value': float(explainer.expected_value),
-                'top_features': list(sorted_importance.keys())[:5]
-            }, "Model explanation generated successfully"
-            
-        except Exception as e:
-            return None, f"Model explanation failed: {str(e)}"        
-    
-    
     def run_forecast(self, target_column, periods=30):
         """Enhanced forecasting with confidence intervals"""
         if target_column not in self.models:
