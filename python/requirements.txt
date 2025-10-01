@@ -30,3 +30,18 @@ networkx>=3.1
 
 statsmodels>=0.14.0
 shap>=0.43.0
+
+# Vector Database & Embeddings
+chromadb>=0.4.22
+sentence-transformers>=2.2.2
+
+# Excel File Support
+openpyxl>=3.1.2
+xlrd>=2.0.1
+
+mlxtend>=0.22.0              # Association rule mining (frequent patterns)
+xgboost>=2.0.0               # Gradient boosting (better than Random Forest)
+lightgbm>=4.1.0              # Fast gradient boosting
+
+
+# pip install mlxtend xgboost lightgbm chromadb sentence-transformers openpyxl xlrd
