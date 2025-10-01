@@ -129,74 +129,74 @@ class DataIngestionEngine:
         return df
 
     def ingest_excel(self, file_path_or_data, source_name, sheet_name=0):
-    """Ingest data from Excel files (XLS/XLSX) with robust parsing"""
-    try:
-        df = None
-        error_messages = []
-        
-        # Strategy 1: Try XLSX with openpyxl
+        """Ingest data from Excel files (XLS/XLSX) with robust parsing"""
         try:
-            print(f"Attempting to read as XLSX: {source_name}")
-            df = pd.read_excel(file_path_or_data, engine='openpyxl', sheet_name=sheet_name)
-            print(f"✅ Successfully read XLSX with openpyxl: {df.shape}")
+            df = None
+            error_messages = []
+        
+            # Strategy 1: Try XLSX with openpyxl
+            try:
+                print(f"Attempting to read as XLSX: {source_name}")
+                df = pd.read_excel(file_path_or_data, engine='openpyxl', sheet_name=sheet_name)
+                print(f"✅ Successfully read XLSX with openpyxl: {df.shape}")
+            except Exception as e:
+                error_messages.append(f"openpyxl: {str(e)}")
+        
+            # Strategy 2: Try XLS with xlrd (for older Excel files)
+            if df is None or len(df) == 0:
+                try:
+                   print(f"Attempting to read as XLS: {source_name}")
+                   df = pd.read_excel(file_path_or_data, engine='xlrd', sheet_name=sheet_name)
+                   print(f"✅ Successfully read XLS with xlrd: {df.shape}")
+                except Exception as e:
+                   error_messages.append(f"xlrd: {str(e)}")
+        
+            # Strategy 3: Try without specifying engine (pandas auto-detect)
+            if df is None or len(df) == 0:
+                try:
+                    print(f"Attempting auto-detect: {source_name}")
+                    df = pd.read_excel(file_path_or_data, sheet_name=sheet_name)
+                    print(f"✅ Successfully read with auto-detect: {df.shape}")
+                except Exception as e:
+                    error_messages.append(f"auto-detect: {str(e)}")
+        
+            if df is None or len(df) == 0:
+               raise Exception(f"Failed to parse Excel with all methods. Errors: {'; '.join(error_messages)}")
+        
+            # Clean column names (Excel often has messy headers)
+            df.columns = [str(col).strip().replace('\n', '').replace('\r', '') for col in df.columns]
+        
+            # Remove completely empty rows
+            df = df.dropna(how='all')
+        
+            # Store in database
+            conn = sqlite3.connect(self.db_path)
+            raw_content = df.to_json(orient='records', force_ascii=False)
+            cursor = conn.cursor()
+            cursor.execute('''
+                INSERT INTO raw_data (source_name, data_type, raw_content)
+                VALUES (?, ?, ?)
+            ''', (source_name, 'EXCEL', raw_content))
+            conn.commit()
+            conn.close()
+        
+            print(f"✅ Excel file ingested successfully: {len(df)} rows, {len(df.columns)} columns")
+            return df
+        
         except Exception as e:
-            error_messages.append(f"openpyxl: {str(e)}")
-        
-        # Strategy 2: Try XLS with xlrd (for older Excel files)
-        if df is None or len(df) == 0:
-            try:
-                print(f"Attempting to read as XLS: {source_name}")
-                df = pd.read_excel(file_path_or_data, engine='xlrd', sheet_name=sheet_name)
-                print(f"✅ Successfully read XLS with xlrd: {df.shape}")
-            except Exception as e:
-                error_messages.append(f"xlrd: {str(e)}")
-        
-        # Strategy 3: Try without specifying engine (pandas auto-detect)
-        if df is None or len(df) == 0:
-            try:
-                print(f"Attempting auto-detect: {source_name}")
-                df = pd.read_excel(file_path_or_data, sheet_name=sheet_name)
-                print(f"✅ Successfully read with auto-detect: {df.shape}")
-            except Exception as e:
-                error_messages.append(f"auto-detect: {str(e)}")
-        
-        if df is None or len(df) == 0:
-            raise Exception(f"Failed to parse Excel with all methods. Errors: {'; '.join(error_messages)}")
-        
-        # Clean column names (Excel often has messy headers)
-        df.columns = [str(col).strip().replace('\n', '').replace('\r', '') for col in df.columns]
-        
-        # Remove completely empty rows
-        df = df.dropna(how='all')
-        
-        # Store in database
-        conn = sqlite3.connect(self.db_path)
-        raw_content = df.to_json(orient='records', force_ascii=False)
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO raw_data (source_name, data_type, raw_content)
-            VALUES (?, ?, ?)
-        ''', (source_name, 'EXCEL', raw_content))
-        conn.commit()
-        conn.close()
-        
-        print(f"✅ Excel file ingested successfully: {len(df)} rows, {len(df.columns)} columns")
-        return df
-        
-    except Exception as e:
-        print(f"Error ingesting Excel: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None
+            print(f"Error ingesting Excel: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
 
-def get_excel_sheets(self, file_path):
-    """Get list of sheet names from Excel file"""
-    try:
-        xl_file = pd.ExcelFile(file_path)
-        return xl_file.sheet_names
-    except Exception as e:
-        print(f"Error reading Excel sheets: {str(e)}")
-        return []
+    def get_excel_sheets(self, file_path):
+        """Get list of sheet names from Excel file"""
+        try:
+            xl_file = pd.ExcelFile(file_path)
+            return xl_file.sheet_names
+        except Exception as e:
+            print(f"Error reading Excel sheets: {str(e)}")
+            return []
 
 class AIProcessingEngine:
     """AI-powered data processing engine - IMPROVED VERSION"""
