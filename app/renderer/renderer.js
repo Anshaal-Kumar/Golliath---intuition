@@ -14,7 +14,7 @@ class DigitalTwinApp {
 
     async init() {
         console.log('Initializing Digital Twin Desktop Application...');
-        
+
         // Get server port from main process
         try {
             if (window.electronAPI && typeof window.electronAPI.getServerPort === 'function') {
@@ -90,11 +90,11 @@ class DigitalTwinApp {
         // Chat functionality
         const chatSendBtn = document.getElementById('chatSendBtn');
         const chatInput = document.getElementById('chatInput');
-        
+
         if (chatSendBtn) {
             chatSendBtn.addEventListener('click', () => this.sendChatMessage());
         }
-        
+
         if (chatInput) {
             chatInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
@@ -175,7 +175,7 @@ class DigitalTwinApp {
 
     showPage(pageId) {
         if (!pageId) return;
-        
+
         console.log(`Switching to page: ${pageId}`);
 
         // Hide all pages
@@ -193,7 +193,7 @@ class DigitalTwinApp {
         document.querySelectorAll('.nav-button').forEach(button => {
             button.classList.remove('active');
         });
-        
+
         const activeButton = document.querySelector(`[data-page="${pageId}"]`);
         if (activeButton) {
             activeButton.classList.add('active');
@@ -204,7 +204,7 @@ class DigitalTwinApp {
             this.populateTargetColumns();
         } else if (pageId === 'ontology') {
             this.loadKnowledgeGraph();
-        } else if (pageId === 'analysis') {  
+        } else if (pageId === 'analysis') {
             this.populateCausalColumns();
         }
 
@@ -214,7 +214,7 @@ class DigitalTwinApp {
     startServerHealthCheck() {
         // Initial check
         this.checkServerStatus();
-        
+
         // Set up periodic health checks
         this.serverCheckInterval = setInterval(() => {
             this.checkServerStatus();
@@ -225,17 +225,17 @@ class DigitalTwinApp {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 5000);
-            
-            const response = await fetch(`${this.serverUrl}/health`, { 
+
+            const response = await fetch(`${this.serverUrl}/health`, {
                 signal: controller.signal,
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             clearTimeout(timeoutId);
-            
+
             if (response.ok) {
                 const data = await response.json();
                 this.updateServerStatus('Connected', true);
@@ -271,7 +271,7 @@ class DigitalTwinApp {
         try {
             const response = await fetch(`${this.serverUrl}/api/system/status`);
             if (!response.ok) return;
-            
+
             const status = await response.json();
 
             // Update sidebar stats
@@ -302,19 +302,24 @@ class DigitalTwinApp {
         if (!files || files.length === 0) return;
 
         const file = files[0];
-        
+
         // Check file type more thoroughly
-        const isCSV = file.type === 'text/csv' || 
-                     file.type === 'application/csv' ||
-                     file.name.toLowerCase().endsWith('.csv');
-                     
-        if (!isCSV) {
-            this.showNotification('Please select a CSV file', 'warning');
+        const isCSV = file.type === 'text/csv' ||
+            file.type === 'application/csv' ||
+            file.name.toLowerCase().endsWith('.csv');
+
+        const isExcel = file.type === 'application/vnd.ms-excel' ||
+            file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+            file.name.toLowerCase().endsWith('.xls') ||
+            file.name.toLowerCase().endsWith('.xlsx');
+
+        if (!isCSV && !isExcel) {
+            this.showNotification('Please select a CSV or Excel file', 'warning');
             return;
         }
 
-        console.log('File selected:', file.name);
-        
+        console.log('File selected:', file.name, 'Type:', file.type);
+
         const fileName = document.getElementById('fileName');
         const fileSize = document.getElementById('fileSize');
         const fileInfo = document.getElementById('fileInfo');
@@ -322,11 +327,12 @@ class DigitalTwinApp {
 
         if (fileName) fileName.textContent = file.name;
         if (fileSize) fileSize.textContent = `Size: ${this.formatFileSize(file.size)}`;
-        if (sourceName) sourceName.value = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+        if (sourceName) sourceName.value = file.name.replace(/\.[^/.]+$/, "");
         if (fileInfo) fileInfo.style.display = 'block';
 
         // Store file for processing
         this.selectedFile = file;
+        this.selectedFileType = isExcel ? 'excel' : 'csv';
         this.addActivity('File Selected', `${file.name} ready for processing`);
     }
 
@@ -351,42 +357,115 @@ class DigitalTwinApp {
 
         const sourceNameElement = document.getElementById('sourceName');
         const sourceName = sourceNameElement ? sourceNameElement.value || 'Unknown Source' : 'Unknown Source';
-        
-        this.showLoading('Processing data with AI...');
+
+        this.showLoading(`Processing ${this.selectedFileType} file with AI...`);
         this.addActivity('Processing', `Ingesting ${this.selectedFile.name}`);
 
         try {
-            const fileContent = await this.readFileContent(this.selectedFile);
-            
-            const response = await fetch(`${this.serverUrl}/api/data/ingest`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    csv_content: fileContent,
-                    source_name: sourceName
-                })
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                this.showNotification(`✅ Successfully processed ${result.rows} rows!`, 'success');
-                await this.showDataPreview();
-                await this.updateSystemStats();
-                this.addActivity('Data Processed', `${result.rows} rows, ${result.columns} columns`);
+            if (this.selectedFileType === 'excel') {
+                await this.processExcelFile(sourceName);
             } else {
-                this.showNotification(`❌ Processing failed: ${result.error}`, 'error');
-                this.addActivity('Processing Failed', result.error);
+                await this.processCSVFile(sourceName);
             }
         } catch (error) {
             console.error('Processing failed:', error);
-            this.showNotification(`❌ Processing failed: ${error.message}`, 'error');
+            this.showNotification(`Processing failed: ${error.message}`, 'error');
             this.addActivity('Processing Failed', error.message);
         } finally {
             this.hideLoading();
         }
+    }
+
+    async processCSVFile(sourceName) {
+        const fileContent = await this.readFileContent(this.selectedFile);
+
+        const response = await fetch(`${this.serverUrl}/api/data/ingest`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                csv_content: fileContent,
+                source_name: sourceName
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            this.showNotification(`Successfully processed ${result.rows} rows!`, 'success');
+            await this.showDataPreview();
+            await this.updateSystemStats();
+            this.addActivity('Data Processed', `${result.rows} rows, ${result.columns} columns`);
+        } else {
+            this.showNotification(`Processing failed: ${result.error}`, 'error');
+            this.addActivity('Processing Failed', result.error);
+        }
+    }
+
+    async processExcelFile(sourceName) {
+        // Read file as base64
+        const fileContent = await this.readFileAsBase64(this.selectedFile);
+
+        // First, get sheet names
+        const sheetsResponse = await fetch(`${this.serverUrl}/api/data/excel/sheets`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                excel_content: fileContent
+            })
+        });
+
+        const sheetsResult = await sheetsResponse.json();
+
+        // For now, use first sheet (you can add sheet selector UI later)
+        const sheetName = sheetsResult.sheets && sheetsResult.sheets.length > 0 ? sheetsResult.sheets[0] : 0;
+
+        console.log(`Processing Excel sheet: ${sheetName}`);
+
+        // Process the Excel file
+        const response = await fetch(`${this.serverUrl}/api/data/ingest/excel`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                excel_content: fileContent,
+                source_name: sourceName,
+                sheet_name: sheetName
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            this.showNotification(`Successfully processed ${result.rows} rows from Excel!`, 'success');
+            await this.showDataPreview();
+            await this.updateSystemStats();
+            this.addActivity('Excel Processed', `${result.rows} rows, ${result.columns} columns`);
+        } else {
+            this.showNotification(`Processing failed: ${result.error}`, 'error');
+            this.addActivity('Processing Failed', result.error);
+        }
+    }
+
+    readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (e.target && e.target.result) {
+                    // Extract base64 content (remove data:...; prefix)
+                    const base64 = e.target.result.split(',')[1];
+                    resolve(base64);
+                } else {
+                    reject(new Error('Failed to read file content'));
+                }
+            };
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(file);
+        });
     }
 
     readFileContent(file) {
@@ -410,7 +489,7 @@ class DigitalTwinApp {
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
             const data = await response.json();
 
             if (data.shape && data.columns && data.sample) {
@@ -458,29 +537,29 @@ class DigitalTwinApp {
     populateCausalColumns(columns, dtypes) {
         const treatmentSelect = document.getElementById('treatmentColumn');
         const outcomeSelect = document.getElementById('outcomeColumn');
-    
+
         if (!treatmentSelect || !outcomeSelect) return;
-    
-    // Clear existing options
+
+        // Clear existing options
         treatmentSelect.innerHTML = '<option value="">Choose column...</option>';
         outcomeSelect.innerHTML = '<option value="">Choose column...</option>';
-    
-    // Add numeric columns only
-       columns.forEach(column => {
-           const dataType = dtypes[column];
-           if (dataType && (dataType.includes('int') || dataType.includes('float'))) {
-               const option1 = document.createElement('option');
-               option1.value = column;
-               option1.textContent = column;
-               treatmentSelect.appendChild(option1);
-            
-               const option2 = document.createElement('option');
-               option2.value = column;
-               option2.textContent = column;
-               outcomeSelect.appendChild(option2);
-        }
-    });
-}
+
+        // Add numeric columns only
+        columns.forEach(column => {
+            const dataType = dtypes[column];
+            if (dataType && (dataType.includes('int') || dataType.includes('float'))) {
+                const option1 = document.createElement('option');
+                option1.value = column;
+                option1.textContent = column;
+                treatmentSelect.appendChild(option1);
+
+                const option2 = document.createElement('option');
+                option2.value = column;
+                option2.textContent = column;
+                outcomeSelect.appendChild(option2);
+            }
+        });
+    }
 
     escapeHtml(text) {
         const div = document.createElement('div');
@@ -558,15 +637,15 @@ class DigitalTwinApp {
         if (insights.correlations && insights.correlations.length > 0) {
             html += '<h4>🔗 Strong Correlations Found (≥0.5):</h4>';
             html += '<div class="correlation-grid">';
-            
+
             insights.correlations.slice(0, 10).forEach(corr => {
                 const strength = Math.abs(corr.correlation);
-                const strengthText = strength > 0.8 ? 'very strong' : 
-                                   strength > 0.6 ? 'strong' : 'moderate';
-                const strengthClass = strength > 0.8 ? 'very-strong' : 
-                                    strength > 0.6 ? 'strong' : 'moderate';
+                const strengthText = strength > 0.8 ? 'very strong' :
+                    strength > 0.6 ? 'strong' : 'moderate';
+                const strengthClass = strength > 0.8 ? 'very-strong' :
+                    strength > 0.6 ? 'strong' : 'moderate';
                 const direction = corr.correlation > 0 ? '↗️' : '↘️';
-                
+
                 html += `
                     <div class="correlation-item ${strengthClass}">
                         <div class="correlation-pair">
@@ -588,7 +667,7 @@ class DigitalTwinApp {
         if (insights.moderate_correlations && insights.moderate_correlations.length > 0) {
             html += '<h4>📈 Moderate Correlations (0.3-0.5):</h4>';
             html += '<div class="moderate-correlations">';
-            
+
             insights.moderate_correlations.slice(0, 5).forEach(corr => {
                 const direction = corr.correlation > 0 ? 'positive' : 'negative';
                 html += `
@@ -602,9 +681,9 @@ class DigitalTwinApp {
         }
 
         // No correlations found
-        if ((!insights.correlations || insights.correlations.length === 0) && 
+        if ((!insights.correlations || insights.correlations.length === 0) &&
             (!insights.moderate_correlations || insights.moderate_correlations.length === 0)) {
-            
+
             if (insights.correlation_summary && insights.correlation_summary.total_pairs > 0) {
                 const summary = insights.correlation_summary;
                 html += `
@@ -658,8 +737,8 @@ class DigitalTwinApp {
         // Feature variability insights
         if (insights.feature_variability && Object.keys(insights.feature_variability).length > 0) {
             const topVariable = Object.entries(insights.feature_variability)
-                .sort(([,a], [,b]) => b.coefficient_of_variation - a.coefficient_of_variation)[0];
-            
+                .sort(([, a], [, b]) => b.coefficient_of_variation - a.coefficient_of_variation)[0];
+
             if (topVariable) {
                 html += `
                     <h4>📏 Feature Variability</h4>
@@ -674,27 +753,27 @@ class DigitalTwinApp {
 
         html += '</div>';
         resultsDiv.innerHTML = html;
-        
+
         // Add enhanced styles
         this.addAnalysisStyles();
     }
 
     // Add this NEW METHOD after displayPatternResults() ends
-    
+
     async visualizePatterns(insights) {
         if (!this.currentData) return;
-        
+
         try {
             // Fetch current data for visualization
             const response = await fetch(`${this.serverUrl}/api/data/current`);
             if (!response.ok) return;
-            
+
             const dataInfo = await response.json();
-            
+
             // Create visualization container
             const analysisPage = document.getElementById('analysis');
             let vizContainer = document.getElementById('patternVizContainer');
-            
+
             if (!vizContainer) {
                 vizContainer = document.createElement('div');
                 vizContainer.id = 'patternVizContainer';
@@ -702,53 +781,53 @@ class DigitalTwinApp {
                 vizContainer.innerHTML = '<h3>📊 Visual Analysis</h3><div id="patternCharts"></div>';
                 analysisPage.appendChild(vizContainer);
             }
-            
+
             const chartsDiv = document.getElementById('patternCharts');
             if (!chartsDiv) return;
-            
+
             // Clear previous charts
             chartsDiv.innerHTML = '';
-            
+
             // 1. CORRELATION HEATMAP
             if (insights.correlations || insights.moderate_correlations) {
                 await this.createCorrelationHeatmap(chartsDiv, dataInfo);
             }
-            
+
             // 2. CLUSTER VISUALIZATION
             if (insights.clusters) {
                 await this.createClusterVisualization(chartsDiv, dataInfo, insights.clusters);
             }
-            
+
             // 3. FEATURE DISTRIBUTION HISTOGRAMS
             await this.createFeatureHistograms(chartsDiv, dataInfo);
-            
+
         } catch (error) {
             console.error('Visualization failed:', error);
         }
     }
-    
+
     async createCorrelationHeatmap(container, dataInfo) {
         const div = document.createElement('div');
         div.id = 'correlationHeatmap';
         div.style.height = '500px';
         div.style.marginBottom = '20px';
         container.appendChild(div);
-        
+
         try {
             // Get numeric columns
             const numericCols = Object.keys(dataInfo.dtypes || {}).filter(col => {
                 const dtype = dataInfo.dtypes[col];
                 return dtype.includes('int') || dtype.includes('float');
             });
-            
+
             if (numericCols.length < 2) {
                 div.innerHTML = '<p class="loading-message">Need at least 2 numeric columns for correlation heatmap</p>';
                 return;
             }
-            
+
             // Calculate correlation matrix from sample data
             const correlationMatrix = this.calculateCorrelationMatrix(dataInfo.sample, numericCols);
-            
+
             const data = [{
                 z: correlationMatrix.values,
                 x: correlationMatrix.labels,
@@ -769,18 +848,18 @@ class DigitalTwinApp {
                 },
                 hovertemplate: '<b>%{x}</b> vs <b>%{y}</b><br>Correlation: %{z:.3f}<extra></extra>'
             }];
-            
+
             const layout = {
                 title: {
                     text: '🔥 Correlation Heatmap',
                     font: { size: 18, color: '#e2e8f0' }
                 },
-                xaxis: { 
+                xaxis: {
                     tickangle: -45,
                     color: '#e2e8f0',
                     tickfont: { size: 10 }
                 },
-                yaxis: { 
+                yaxis: {
                     color: '#e2e8f0',
                     tickfont: { size: 10 }
                 },
@@ -789,25 +868,25 @@ class DigitalTwinApp {
                 font: { color: '#e2e8f0' },
                 margin: { t: 80, l: 120, r: 80, b: 120 }
             };
-            
+
             const config = {
                 responsive: true,
                 displayModeBar: true,
                 displaylogo: false
             };
-            
+
             Plotly.newPlot(div, data, layout, config);
-            
+
         } catch (error) {
             console.error('Heatmap creation failed:', error);
             div.innerHTML = '<p class="loading-message">Failed to create correlation heatmap</p>';
         }
     }
-    
+
     calculateCorrelationMatrix(sampleData, numericCols) {
         const n = numericCols.length;
         const matrix = Array(n).fill(0).map(() => Array(n).fill(0));
-        
+
         // Calculate correlations between all pairs
         for (let i = 0; i < n; i++) {
             for (let j = 0; j < n; j++) {
@@ -817,59 +896,59 @@ class DigitalTwinApp {
                     // Extract column values
                     const col1 = sampleData.map(row => parseFloat(row[numericCols[i]]) || 0);
                     const col2 = sampleData.map(row => parseFloat(row[numericCols[j]]) || 0);
-                    
+
                     // Calculate Pearson correlation
                     matrix[i][j] = this.pearsonCorrelation(col1, col2);
                 }
             }
         }
-        
+
         return {
             values: matrix,
             labels: numericCols
         };
     }
-    
+
     pearsonCorrelation(x, y) {
         const n = x.length;
         if (n === 0) return 0;
-        
+
         const sumX = x.reduce((a, b) => a + b, 0);
         const sumY = y.reduce((a, b) => a + b, 0);
         const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
         const sumX2 = x.reduce((sum, xi) => sum + xi * xi, 0);
         const sumY2 = y.reduce((sum, yi) => sum + yi * yi, 0);
-        
+
         const numerator = n * sumXY - sumX * sumY;
         const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-        
+
         return denominator === 0 ? 0 : numerator / denominator;
     }
-    
+
     async createClusterVisualization(container, dataInfo, clusterInfo) {
         const div = document.createElement('div');
         div.id = 'clusterViz';
         div.style.height = '500px';
         div.style.marginBottom = '20px';
         container.appendChild(div);
-        
+
         try {
             const features = clusterInfo.features_used || [];
             if (features.length < 2) {
                 div.innerHTML = '<p class="loading-message">Need at least 2 features for cluster visualization</p>';
                 return;
             }
-            
+
             // Use first two features for 2D visualization
             const feature1 = features[0];
             const feature2 = features[1];
             const labels = clusterInfo.labels || [];
-            
+
             // Extract feature values from sample data
             const x = dataInfo.sample.map(row => parseFloat(row[feature1]) || 0);
             const y = dataInfo.sample.map(row => parseFloat(row[feature2]) || 0);
             const colors = labels.slice(0, x.length);
-            
+
             const data = [{
                 x: x,
                 y: y,
@@ -892,7 +971,7 @@ class DigitalTwinApp {
                 text: colors.map(c => `Cluster ${c}`),
                 hovertemplate: '<b>Cluster %{text}</b><br>%{xaxis.title.text}: %{x:.2f}<br>%{yaxis.title.text}: %{y:.2f}<extra></extra>'
             }];
-            
+
             const layout = {
                 title: {
                     text: `🎯 Cluster Visualization (${clusterInfo.n_clusters} clusters)`,
@@ -913,45 +992,45 @@ class DigitalTwinApp {
                 font: { color: '#e2e8f0' },
                 hovermode: 'closest'
             };
-            
+
             const config = {
                 responsive: true,
                 displayModeBar: true,
                 displaylogo: false
             };
-            
+
             Plotly.newPlot(div, data, layout, config);
-            
+
         } catch (error) {
             console.error('Cluster visualization failed:', error);
             div.innerHTML = '<p class="loading-message">Failed to create cluster visualization</p>';
         }
     }
-    
+
     async createFeatureHistograms(container, dataInfo) {
         const div = document.createElement('div');
         div.id = 'featureHistograms';
         div.style.height = '400px';
         div.style.marginBottom = '20px';
         container.appendChild(div);
-        
+
         try {
             // Get numeric columns
             const numericCols = Object.keys(dataInfo.dtypes || {}).filter(col => {
                 const dtype = dataInfo.dtypes[col];
                 return dtype.includes('int') || dtype.includes('float');
             }).slice(0, 4); // Limit to 4 features
-            
+
             if (numericCols.length === 0) {
                 div.innerHTML = '<p class="loading-message">No numeric columns for histograms</p>';
                 return;
             }
-            
+
             const traces = numericCols.map(col => {
                 const values = dataInfo.sample
                     .map(row => parseFloat(row[col]))
                     .filter(v => !isNaN(v));
-                
+
                 return {
                     x: values,
                     type: 'histogram',
@@ -965,7 +1044,7 @@ class DigitalTwinApp {
                     }
                 };
             });
-            
+
             const layout = {
                 title: {
                     text: '📊 Feature Distributions',
@@ -991,15 +1070,15 @@ class DigitalTwinApp {
                     borderwidth: 1
                 }
             };
-            
+
             const config = {
                 responsive: true,
                 displayModeBar: true,
                 displaylogo: false
             };
-            
+
             Plotly.newPlot(div, traces, layout, config);
-            
+
         } catch (error) {
             console.error('Histogram creation failed:', error);
             div.innerHTML = '<p class="loading-message">Failed to create histograms</p>';
@@ -1014,7 +1093,7 @@ class DigitalTwinApp {
 
         const contaminationSlider = document.getElementById('contaminationSlider');
         const contamination = contaminationSlider ? parseFloat(contaminationSlider.value) : 0.1;
-        
+
         this.showLoading('Detecting anomalies with AI...');
         this.addActivity('Analysis', `Detecting anomalies (sensitivity: ${contamination})`);
 
@@ -1047,14 +1126,14 @@ class DigitalTwinApp {
     async runCausalAnalysis() {
         const treatmentCol = document.getElementById('treatmentColumn').value;
         const outcomeCol = document.getElementById('outcomeColumn').value;
-        
+
         if (!treatmentCol || !outcomeCol) {
             this.showNotification('Please select both treatment and outcome variables', 'warning');
             return;
         }
-        
+
         this.showLoading('Running causal analysis...');
-        
+
         try {
             const response = await fetch(`${this.serverUrl}/api/analysis/causality`, {
                 method: 'POST',
@@ -1072,7 +1151,7 @@ class DigitalTwinApp {
             }
 
             const result = await response.json();
-            
+
             if (result.success) {
                 this.displayCausalResults(result.causal_analysis);
                 this.showNotification('Causal analysis complete!', 'success');
@@ -1090,22 +1169,22 @@ class DigitalTwinApp {
     displayCausalResults(analysis) {
         const resultsDiv = document.getElementById('causalResults');
         if (!resultsDiv) return;
-        
+
         let html = '<div class="causal-results">';
         html += '<h4>🔗 Causal Effect Results</h4>';
         html += `<p><strong>Treatment:</strong> ${this.escapeHtml(analysis.treatment)}</p>`;
         html += `<p><strong>Outcome:</strong> ${this.escapeHtml(analysis.outcome)}</p>`;
         html += `<p><strong>Causal Effect:</strong> ${analysis.causal_effect.toFixed(4)}</p>`;
         html += `<p class="interpretation">${this.escapeHtml(analysis.interpretation)}</p>`;
-        
+
         if (analysis.confidence_interval) {
             html += `<p><strong>95% CI:</strong> [${analysis.confidence_interval[0].toFixed(4)}, ${analysis.confidence_interval[1].toFixed(4)}]</p>`;
         }
-        
+
         if (analysis.confounders && analysis.confounders.length > 0) {
             html += `<p><strong>Controlled for:</strong> ${analysis.confounders.join(', ')}</p>`;
         }
-        
+
         html += '</div>';
         resultsDiv.innerHTML = html;
     }
@@ -1116,13 +1195,13 @@ class DigitalTwinApp {
         if (!resultsDiv) return;
 
         let html = '<div class="analysis-results anomaly-results">';
-        
+
         const anomalyCount = result.anomaly_count || 0;
         const totalRecords = result.total_records || 0;
         const anomalyRate = result.anomaly_rate || 0;
-        
+
         html += '<h4>🚨 Anomaly Detection Results</h4>';
-        
+
         if (anomalyCount > 0) {
             // Anomaly summary with visual indicators
             html += `
@@ -1143,7 +1222,7 @@ class DigitalTwinApp {
                     </div>
                 </div>
             `;
-            
+
             // Severity assessment
             let severity, severityClass, recommendation;
             if (anomalyRate > 10) {
@@ -1159,31 +1238,31 @@ class DigitalTwinApp {
                 severityClass = 'severity-low';
                 recommendation = 'Good data quality - few outliers detected.';
             }
-            
+
             html += `
                 <div class="severity-indicator ${severityClass}">
                     <div class="severity-badge">${severity} Anomaly Level</div>
                     <p class="severity-text">${recommendation}</p>
                 </div>
             `;
-            
+
             // Sample anomaly indices
             if (result.anomaly_indices && result.anomaly_indices.length > 0) {
                 const displayCount = Math.min(10, result.anomaly_indices.length);
                 const sampleIndices = result.anomaly_indices.slice(0, displayCount);
-                
+
                 html += `
                     <div class="anomaly-indices">
                         <h5>🎯 Sample Anomaly Record IDs:</h5>
                         <div class="indices-list">
                             ${sampleIndices.map(idx => `<span class="anomaly-index">#${idx}</span>`).join('')}
                         </div>
-                        ${result.anomaly_indices.length > displayCount ? 
-                          `<p class="more-indices">... and ${result.anomaly_indices.length - displayCount} more</p>` : ''}
+                        ${result.anomaly_indices.length > displayCount ?
+                        `<p class="more-indices">... and ${result.anomaly_indices.length - displayCount} more</p>` : ''}
                     </div>
                 `;
             }
-            
+
             // Anomaly scores if available
             if (result.anomaly_scores && result.threshold_score) {
                 const avgScore = result.anomaly_scores.reduce((a, b) => a + b, 0) / result.anomaly_scores.length;
@@ -1198,7 +1277,7 @@ class DigitalTwinApp {
                     </div>
                 `;
             }
-            
+
         } else {
             // No anomalies found
             html += `
@@ -1216,32 +1295,32 @@ class DigitalTwinApp {
                 </div>
             `;
         }
-        
+
         html += '</div>';
         resultsDiv.innerHTML = html;
-        
+
         // Add enhanced styles
         this.addAnalysisStyles();
     }
 
     // Add this NEW METHOD after displayAnomalyResults() ends
-    
+
     async visualizeAnomalies(result) {
         if (!this.currentData || !result.anomaly_indices || result.anomaly_indices.length === 0) {
             return;
         }
-        
+
         try {
             // Fetch current data
             const response = await fetch(`${this.serverUrl}/api/data/current`);
             if (!response.ok) return;
-            
+
             const dataInfo = await response.json();
-            
+
             // Create visualization container
             const analysisPage = document.getElementById('analysis');
             let vizContainer = document.getElementById('anomalyVizContainer');
-            
+
             if (!vizContainer) {
                 vizContainer = document.createElement('div');
                 vizContainer.id = 'anomalyVizContainer';
@@ -1249,56 +1328,56 @@ class DigitalTwinApp {
                 vizContainer.innerHTML = '<h3>🚨 Anomaly Visualizations</h3><div id="anomalyCharts"></div>';
                 analysisPage.appendChild(vizContainer);
             }
-            
+
             const chartsDiv = document.getElementById('anomalyCharts');
             if (!chartsDiv) return;
-            
+
             chartsDiv.innerHTML = '';
-            
+
             // Create scatter plot for anomalies
             await this.createAnomalyScatterPlot(chartsDiv, dataInfo, result);
-            
+
             // Create bar chart showing anomaly scores
             await this.createAnomalyBarChart(chartsDiv, result);
-            
+
         } catch (error) {
             console.error('Anomaly visualization failed:', error);
         }
     }
-    
+
     async createAnomalyScatterPlot(container, dataInfo, anomalyResult) {
         const div = document.createElement('div');
         div.id = 'anomalyScatter';
         div.style.height = '500px';
         div.style.marginBottom = '20px';
         container.appendChild(div);
-        
+
         try {
             // Get first two numeric columns
             const numericCols = Object.keys(dataInfo.dtypes || {}).filter(col => {
                 const dtype = dataInfo.dtypes[col];
                 return dtype.includes('int') || dtype.includes('float');
             }).slice(0, 2);
-            
+
             if (numericCols.length < 2) {
                 div.innerHTML = '<p class="loading-message">Need at least 2 numeric columns for scatter plot</p>';
                 return;
             }
-            
+
             const feature1 = numericCols[0];
             const feature2 = numericCols[1];
-            
+
             // Create set of anomaly indices for quick lookup
             const anomalySet = new Set(anomalyResult.anomaly_indices);
-            
+
             // Separate normal and anomaly points
             const normalX = [], normalY = [];
             const anomalyX = [], anomalyY = [];
-            
+
             dataInfo.sample.forEach((row, index) => {
                 const x = parseFloat(row[feature1]) || 0;
                 const y = parseFloat(row[feature2]) || 0;
-                
+
                 if (anomalySet.has(index)) {
                     anomalyX.push(x);
                     anomalyY.push(y);
@@ -1307,7 +1386,7 @@ class DigitalTwinApp {
                     normalY.push(y);
                 }
             });
-            
+
             const traces = [
                 {
                     x: normalX,
@@ -1344,7 +1423,7 @@ class DigitalTwinApp {
                     hovertemplate: '<b>⚠️ Anomaly</b><br>%{xaxis.title.text}: %{x:.2f}<br>%{yaxis.title.text}: %{y:.2f}<extra></extra>'
                 }
             ];
-            
+
             const layout = {
                 title: {
                     text: '🚨 Anomaly Detection Scatter Plot',
@@ -1370,41 +1449,41 @@ class DigitalTwinApp {
                     borderwidth: 1
                 }
             };
-            
+
             const config = {
                 responsive: true,
                 displayModeBar: true,
                 displaylogo: false
             };
-            
+
             Plotly.newPlot(div, traces, layout, config);
-            
+
         } catch (error) {
             console.error('Anomaly scatter plot failed:', error);
             div.innerHTML = '<p class="loading-message">Failed to create anomaly scatter plot</p>';
         }
     }
-    
+
     async createAnomalyBarChart(container, anomalyResult) {
         const div = document.createElement('div');
         div.id = 'anomalyBarChart';
         div.style.height = '400px';
         div.style.marginBottom = '20px';
         container.appendChild(div);
-        
+
         try {
             if (!anomalyResult.anomaly_scores || anomalyResult.anomaly_scores.length === 0) {
                 div.innerHTML = '<p class="loading-message">No anomaly scores available for bar chart</p>';
                 return;
             }
-            
+
             // Get top 20 most anomalous records
             const scores = anomalyResult.anomaly_scores.map((score, idx) => ({
                 index: idx,
                 score: score,
                 isAnomaly: anomalyResult.anomaly_indices.includes(idx)
             })).sort((a, b) => a.score - b.score).slice(0, 20);
-            
+
             const data = [{
                 x: scores.map(s => `Record ${s.index}`),
                 y: scores.map(s => s.score),
@@ -1418,7 +1497,7 @@ class DigitalTwinApp {
                 },
                 hovertemplate: '<b>%{x}</b><br>Anomaly Score: %{y:.3f}<extra></extra>'
             }];
-            
+
             const layout = {
                 title: {
                     text: '📊 Top 20 Anomaly Scores (Lower = More Anomalous)',
@@ -1440,15 +1519,15 @@ class DigitalTwinApp {
                 font: { color: '#e2e8f0' },
                 margin: { b: 100 }
             };
-            
+
             const config = {
                 responsive: true,
                 displayModeBar: true,
                 displaylogo: false
             };
-            
+
             Plotly.newPlot(div, data, layout, config);
-            
+
         } catch (error) {
             console.error('Anomaly bar chart failed:', error);
             div.innerHTML = '<p class="loading-message">Failed to create anomaly bar chart</p>';
@@ -1458,7 +1537,7 @@ class DigitalTwinApp {
     // Add enhanced CSS styles for better analysis display
     addAnalysisStyles() {
         if (document.getElementById('enhanced-analysis-styles')) return;
-        
+
         const styles = `
             <style id="enhanced-analysis-styles">
             .quality-summary {
@@ -1846,7 +1925,7 @@ class DigitalTwinApp {
             }
             </style>
         `;
-        
+
         document.head.insertAdjacentHTML('beforeend', styles);
     }
 
@@ -1883,7 +1962,7 @@ class DigitalTwinApp {
 
         const treatmentSelect = document.getElementById('treatmentColumn');
         const outcomeSelect = document.getElementById('outcomeColumn');
-        
+
         if (!treatmentSelect || !outcomeSelect) return;
 
         // Clear existing options
@@ -1899,7 +1978,7 @@ class DigitalTwinApp {
                     option1.value = column;
                     option1.textContent = column;
                     treatmentSelect.appendChild(option1);
-                    
+
                     const option2 = document.createElement('option');
                     option2.value = column;
                     option2.textContent = column;
@@ -1932,13 +2011,13 @@ class DigitalTwinApp {
 
         try {
             console.log(`Building model for target column: ${targetColumn}`);
-            
+
             const response = await fetch(`${this.serverUrl}/api/simulation/model/build`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     target_column: targetColumn,
                     data_shape: this.currentData ? {
                         rows: this.currentData.shape ? this.currentData.shape[0] : 0,
@@ -1964,7 +2043,7 @@ class DigitalTwinApp {
                 console.log('Model built successfully:', result);
                 this.displayModelResults(result);
                 this.models[targetColumn] = result;
-                
+
                 await this.explainModel(targetColumn);
 
                 // Enable forecasting
@@ -1972,7 +2051,7 @@ class DigitalTwinApp {
                 if (forecastBtn) {
                     forecastBtn.disabled = false;
                 }
-                
+
                 await this.updateSystemStats();
                 this.addActivity('Model Built', `${targetColumn} prediction model (MAE: ${result.mae.toFixed(4)})`);
                 this.showNotification(`Model built successfully! MAE: ${result.mae.toFixed(4)}`, 'success');
@@ -1998,108 +2077,108 @@ class DigitalTwinApp {
         let html = '<div class="model-results">';
         html += `<h4>🤖 AI Model Successfully Built!</h4>`;
         html += `<p><strong>Target Variable:</strong> ${this.escapeHtml(result.target_column)}</p>`;
-        
+
         if (result.features && Array.isArray(result.features)) {
             html += `<p><strong>Input Features:</strong> ${result.features.map(f => this.escapeHtml(f)).join(', ')}</p>`;
         }
-        
+
         html += `<p><strong>Model Accuracy (MAE):</strong> ${result.mae.toFixed(4)}</p>`;
-        
+
         if (result.feature_importance) {
             html += '<h5>📊 Feature Importance (Top 5):</h5><ul>';
             const sortedFeatures = Object.entries(result.feature_importance)
-                .sort(([,a], [,b]) => b - a)
+                .sort(([, a], [, b]) => b - a)
                 .slice(0, 5);
-                
+
             sortedFeatures.forEach(([feature, importance]) => {
                 const percentage = (importance * 100).toFixed(1);
                 html += `<li><strong>${this.escapeHtml(feature)}:</strong> ${percentage}%</li>`;
             });
             html += '</ul>';
         }
-        
+
         html += '<p class="model-info">💡 <em>Lower MAE indicates better model accuracy</em></p>';
         html += '</div>';
-        
+
         resultsDiv.innerHTML = html;
 
         this.populateWhatIfControls(result);
     }
 
     async explainModel(targetColumn) {
-    this.showLoading('Generating model explanations...');
-    
-    try {
-        const response = await fetch(`${this.serverUrl}/api/simulation/model/explain`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ target_column: targetColumn })
+        this.showLoading('Generating model explanations...');
+
+        try {
+            const response = await fetch(`${this.serverUrl}/api/simulation/model/explain`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ target_column: targetColumn })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.displayShapExplanation(result.explanation);
+                this.showNotification('Model explanation generated!', 'success');
+            } else {
+                this.showNotification(`Explanation failed: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Explanation failed:', error);
+            this.showNotification(`Explanation failed: ${error.message}`, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    displayShapExplanation(explanation) {
+        const resultsDiv = document.getElementById('modelResults');
+        if (!resultsDiv) return;
+
+        let html = '<div class="shap-explanation" style="margin-top: 20px; padding: 16px; background: rgba(168, 85, 247, 0.1); border-radius: 8px; border-left: 4px solid #a855f7;">';
+        html += '<h4 style="color: #a855f7; margin-bottom: 12px;">🔍 Model Explainability (SHAP)</h4>';
+        html += '<p style="color: #94a3b8; margin-bottom: 12px;">Feature impact on predictions (higher = more important):</p>';
+        html += '<ul style="margin-left: 20px;">';
+
+        const sorted = Object.entries(explanation.feature_importance)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 10);
+
+        sorted.forEach(([feature, importance]) => {
+            const percentage = (importance * 100).toFixed(1);
+            html += `<li style="margin-bottom: 8px; color: #e2e8f0;"><strong>${this.escapeHtml(feature)}:</strong> ${importance.toFixed(4)} (${percentage}% impact)</li>`;
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        html += '</ul>';
+        html += '<p style="margin-top: 12px; font-size: 13px; color: #94a3b8; font-style: italic;">💡 SHAP values show how much each feature contributes to predictions</p>';
+        html += '</div>';
 
-        const result = await response.json();
-        
-        if (result.success) {
-            this.displayShapExplanation(result.explanation);
-            this.showNotification('Model explanation generated!', 'success');
-        } else {
-            this.showNotification(`Explanation failed: ${result.error}`, 'error');
-        }
-    } catch (error) {
-        console.error('Explanation failed:', error);
-        this.showNotification(`Explanation failed: ${error.message}`, 'error');
-    } finally {
-        this.hideLoading();
+        // Append to existing results instead of replacing
+        resultsDiv.innerHTML += html;
     }
-}
-
-displayShapExplanation(explanation) {
-    const resultsDiv = document.getElementById('modelResults');
-    if (!resultsDiv) return;
-    
-    let html = '<div class="shap-explanation" style="margin-top: 20px; padding: 16px; background: rgba(168, 85, 247, 0.1); border-radius: 8px; border-left: 4px solid #a855f7;">';
-    html += '<h4 style="color: #a855f7; margin-bottom: 12px;">🔍 Model Explainability (SHAP)</h4>';
-    html += '<p style="color: #94a3b8; margin-bottom: 12px;">Feature impact on predictions (higher = more important):</p>';
-    html += '<ul style="margin-left: 20px;">';
-    
-    const sorted = Object.entries(explanation.feature_importance)
-        .sort(([,a], [,b]) => b - a)
-        .slice(0, 10);
-    
-    sorted.forEach(([feature, importance]) => {
-        const percentage = (importance * 100).toFixed(1);
-        html += `<li style="margin-bottom: 8px; color: #e2e8f0;"><strong>${this.escapeHtml(feature)}:</strong> ${importance.toFixed(4)} (${percentage}% impact)</li>`;
-    });
-    
-    html += '</ul>';
-    html += '<p style="margin-top: 12px; font-size: 13px; color: #94a3b8; font-style: italic;">💡 SHAP values show how much each feature contributes to predictions</p>';
-    html += '</div>';
-    
-    // Append to existing results instead of replacing
-    resultsDiv.innerHTML += html;
-}
 
     populateWhatIfControls(modelResult) {
-    const whatIfControls = document.getElementById('whatIfControls');
-    if (!whatIfControls) return;
+        const whatIfControls = document.getElementById('whatIfControls');
+        if (!whatIfControls) return;
 
-    const features = modelResult.features || [];
-    
-    if (features.length === 0) {
-        whatIfControls.innerHTML = '<div class="loading-message">No features available</div>';
-        return;
-    }
+        const features = modelResult.features || [];
 
-    let html = '<div class="what-if-controls">';
-    
-    // Create input for each feature
-    features.slice(0, 5).forEach(feature => { // Limit to top 5 features
-        html += `
+        if (features.length === 0) {
+            whatIfControls.innerHTML = '<div class="loading-message">No features available</div>';
+            return;
+        }
+
+        let html = '<div class="what-if-controls">';
+
+        // Create input for each feature
+        features.slice(0, 5).forEach(feature => { // Limit to top 5 features
+            html += `
             <div class="form-group">
                 <label>${this.escapeHtml(feature)}:</label>
                 <input type="number" 
@@ -2109,98 +2188,98 @@ displayShapExplanation(explanation) {
                        step="0.1">
             </div>
         `;
-    });
-    
-    html += '</div>';
-    html += `<button class="forecast-button" id="runWhatIfBtn">🎭 Run What-If Scenario</button>`;
-    
-    whatIfControls.innerHTML = html;
-
-    // Add event listener for the button
-    const runWhatIfBtn = document.getElementById('runWhatIfBtn');
-    if (runWhatIfBtn) {
-        runWhatIfBtn.addEventListener('click', () => this.runWhatIfAnalysis(modelResult.target_column));
-    }
-}
-
-async runWhatIfAnalysis(targetColumn) {
-    // Gather all input values
-    const whatIfInputs = document.querySelectorAll('.whatif-input');
-    const featureChanges = {};
-    
-    whatIfInputs.forEach(input => {
-        const featureName = input.id.replace('whatif_', '');
-        const value = parseFloat(input.value);
-        if (!isNaN(value) && value !== 0) {
-            featureChanges[featureName] = value;
-        }
-    });
-
-    if (Object.keys(featureChanges).length === 0) {
-        this.showNotification('Please enter at least one value to test', 'warning');
-        return;
-    }
-
-    this.showLoading('Running what-if scenario...');
-
-    try {
-        const response = await fetch(`${this.serverUrl}/api/simulation/whatif`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                target_column: targetColumn,
-                feature_changes: featureChanges
-            })
         });
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+        html += '</div>';
+        html += `<button class="forecast-button" id="runWhatIfBtn">🎭 Run What-If Scenario</button>`;
 
-        const result = await response.json();
-        
-        if (result.success) {
-            this.displayWhatIfResults(result.analysis);
-            this.showNotification('What-if analysis complete!', 'success');
-        } else {
-            this.showNotification(`Analysis failed: ${result.error}`, 'error');
+        whatIfControls.innerHTML = html;
+
+        // Add event listener for the button
+        const runWhatIfBtn = document.getElementById('runWhatIfBtn');
+        if (runWhatIfBtn) {
+            runWhatIfBtn.addEventListener('click', () => this.runWhatIfAnalysis(modelResult.target_column));
         }
-    } catch (error) {
-        console.error('What-if analysis failed:', error);
-        this.showNotification(`Analysis failed: ${error.message}`, 'error');
-    } finally {
-        this.hideLoading();
     }
-}
 
-displayWhatIfResults(analysis) {
-    const resultsDiv = document.getElementById('scenarioResults');
-    if (!resultsDiv) return;
+    async runWhatIfAnalysis(targetColumn) {
+        // Gather all input values
+        const whatIfInputs = document.querySelectorAll('.whatif-input');
+        const featureChanges = {};
 
-    let html = '<div class="scenario-results">';
-    html += '<h4>🎭 What-If Analysis Results</h4>';
-    html += `<p><strong>Baseline Prediction:</strong> ${analysis.baseline_prediction.toFixed(2)}</p>`;
-    html += `<p><strong>Modified Prediction:</strong> ${analysis.modified_prediction.toFixed(2)}</p>`;
-    html += `<p><strong>Impact:</strong> ${analysis.impact > 0 ? '+' : ''}${analysis.impact.toFixed(2)} (${analysis.percent_change.toFixed(1)}%)</p>`;
-    
-    if (analysis.applied_changes && Object.keys(analysis.applied_changes).length > 0) {
-        html += '<h5>📊 Changes Applied:</h5><ul>';
-        Object.entries(analysis.applied_changes).forEach(([feature, value]) => {
-            html += `<li><strong>${this.escapeHtml(feature)}:</strong> ${value.toFixed(2)}</li>`;
+        whatIfInputs.forEach(input => {
+            const featureName = input.id.replace('whatif_', '');
+            const value = parseFloat(input.value);
+            if (!isNaN(value) && value !== 0) {
+                featureChanges[featureName] = value;
+            }
         });
-        html += '</ul>';
+
+        if (Object.keys(featureChanges).length === 0) {
+            this.showNotification('Please enter at least one value to test', 'warning');
+            return;
+        }
+
+        this.showLoading('Running what-if scenario...');
+
+        try {
+            const response = await fetch(`${this.serverUrl}/api/simulation/whatif`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    target_column: targetColumn,
+                    feature_changes: featureChanges
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.displayWhatIfResults(result.analysis);
+                this.showNotification('What-if analysis complete!', 'success');
+            } else {
+                this.showNotification(`Analysis failed: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('What-if analysis failed:', error);
+            this.showNotification(`Analysis failed: ${error.message}`, 'error');
+        } finally {
+            this.hideLoading();
+        }
     }
-    
-    html += '</div>';
-    resultsDiv.innerHTML = html;
-}
+
+    displayWhatIfResults(analysis) {
+        const resultsDiv = document.getElementById('scenarioResults');
+        if (!resultsDiv) return;
+
+        let html = '<div class="scenario-results">';
+        html += '<h4>🎭 What-If Analysis Results</h4>';
+        html += `<p><strong>Baseline Prediction:</strong> ${analysis.baseline_prediction.toFixed(2)}</p>`;
+        html += `<p><strong>Modified Prediction:</strong> ${analysis.modified_prediction.toFixed(2)}</p>`;
+        html += `<p><strong>Impact:</strong> ${analysis.impact > 0 ? '+' : ''}${analysis.impact.toFixed(2)} (${analysis.percent_change.toFixed(1)}%)</p>`;
+
+        if (analysis.applied_changes && Object.keys(analysis.applied_changes).length > 0) {
+            html += '<h5>📊 Changes Applied:</h5><ul>';
+            Object.entries(analysis.applied_changes).forEach(([feature, value]) => {
+                html += `<li><strong>${this.escapeHtml(feature)}:</strong> ${value.toFixed(2)}</li>`;
+            });
+            html += '</ul>';
+        }
+
+        html += '</div>';
+        resultsDiv.innerHTML = html;
+    }
 
     async generateForecast() {
         const targetSelect = document.getElementById('targetColumn');
         const forecastPeriodsInput = document.getElementById('forecastPeriods');
-        
+
         const targetColumn = targetSelect ? targetSelect.value : '';
         const periods = forecastPeriodsInput ? parseInt(forecastPeriodsInput.value) : 30;
 
@@ -2223,7 +2302,7 @@ displayWhatIfResults(analysis) {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     target_column: targetColumn,
                     periods: periods
                 })
@@ -2268,19 +2347,19 @@ displayWhatIfResults(analysis) {
         html += `<p><strong>Range:</strong> ${minValue.toFixed(2)} to ${maxValue.toFixed(2)}</p>`;
         html += '<p>📊 <em>Chart visualization displayed below</em></p>';
         html += '</div>';
-        
+
         resultsDiv.innerHTML = html;
     }
 
     plotForecast(forecastData, targetColumn) {
         const chartsDiv = document.getElementById('simulationCharts');
         const plotDiv = document.getElementById('simulationPlot');
-        
+
         if (!plotDiv || !window.Plotly || !Array.isArray(forecastData)) {
             console.error('Plotly not available, plot div not found, or invalid forecast data');
             return;
         }
-        
+
         try {
             const dates = forecastData.map(item => item.date);
             const values = forecastData.map(item => item.predicted_value || 0);
@@ -2323,12 +2402,12 @@ displayWhatIfResults(analysis) {
                     text: `${targetColumn} Forecast`,
                     font: { size: 18, color: '#e2e8f0' }
                 },
-                xaxis: { 
+                xaxis: {
                     title: 'Date',
                     color: '#e2e8f0',
                     gridcolor: '#4b5563'
                 },
-                yaxis: { 
+                yaxis: {
                     title: targetColumn,
                     color: '#e2e8f0',
                     gridcolor: '#4b5563'
@@ -2351,7 +2430,7 @@ displayWhatIfResults(analysis) {
             };
 
             Plotly.newPlot(plotDiv, traces, layout, config);
-            
+
             if (chartsDiv) {
                 chartsDiv.style.display = 'block';
             }
@@ -2389,17 +2468,17 @@ displayWhatIfResults(analysis) {
             }
 
             const result = await response.json();
-            
+
             // Remove typing indicator
             this.removeChatMessage(typingId);
-            
+
             // Add AI response
             this.addChatMessage(result.response || 'No response received', 'assistant');
             this.addActivity('AI Chat', `User asked: "${message.substring(0, 30)}..."`);
         } catch (error) {
             // Remove typing indicator
             this.removeChatMessage(typingId);
-            
+
             console.error('Chat query failed:', error);
             this.addChatMessage('Sorry, I encountered an error processing your question. Please make sure you have loaded some data and try again.', 'assistant');
             this.addActivity('Chat Error', error.message);
@@ -2414,19 +2493,19 @@ displayWhatIfResults(analysis) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `chat-message ${sender}`;
         messageDiv.id = messageId;
-        
+
         const avatar = sender === 'user' ? '👤' : '🤖';
-        
+
         messageDiv.innerHTML = `
             <div class="message-avatar">${avatar}</div>
             <div class="message-content">
                 <div class="message-text">${this.formatChatMessage(message)}</div>
             </div>
         `;
-        
+
         chatMessages.appendChild(messageDiv);
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         return messageId;
     }
 
@@ -2441,7 +2520,7 @@ displayWhatIfResults(analysis) {
 
     formatChatMessage(message) {
         if (!message) return '';
-        
+
         // Basic formatting for chat messages
         return this.escapeHtml(message)
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // Bold
@@ -2494,7 +2573,7 @@ displayWhatIfResults(analysis) {
 
         let html = '<div class="query-results">';
         html += `<h4>🔍 Query Results for: "${this.escapeHtml(result.query || '')}"</h4>`;
-        
+
         if (result.results && Array.isArray(result.results) && result.results.length > 0) {
             html += '<ul>';
             result.results.forEach(item => {
@@ -2505,7 +2584,7 @@ displayWhatIfResults(analysis) {
             html += '<p>No results found. Try a different query or load some data first.</p>';
             html += '<p><em>Example queries: "show correlations", "list entities", "describe relationships"</em></p>';
         }
-        
+
         html += '</div>';
         resultsDiv.innerHTML = html;
     }
@@ -2524,7 +2603,7 @@ displayWhatIfResults(analysis) {
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            
+
             const result = await response.json();
             this.displayKnowledgeGraph(result);
             this.displayOntologyInfo(result);
@@ -2569,64 +2648,64 @@ displayWhatIfResults(analysis) {
         `;
 
         // FIXED: Better node positioning with proper spread
-const nodeCount = data.nodes.length;
-const minRadius = 1.5; // Minimum radius
-const maxRadius = 3.0; // Maximum radius
-// Better approach - use D3 force simulation or increase base radius
-const radius = Math.max(2.0, Math.min(4.0, Math.sqrt(nodeCount) * 0.8));
+        const nodeCount = data.nodes.length;
+        const minRadius = 1.5; // Minimum radius
+        const maxRadius = 3.0; // Maximum radius
+        // Better approach - use D3 force simulation or increase base radius
+        const radius = Math.max(2.0, Math.min(4.0, Math.sqrt(nodeCount) * 0.8));
 
-const nodes = data.nodes.map((node, index) => {
-    // Create concentric circles for better distribution
-    const layer = Math.floor(index / 8); // 8 nodes per layer
-    const angleOffset = layer * 0.3; // Rotate each layer slightly
-    const currentRadius = radius + (layer * 0.8); // Increase radius per layer
-    const nodesInLayer = Math.min(8, nodeCount - (layer * 8));
-    const angle = (2 * Math.PI * (index % 8)) / nodesInLayer + angleOffset;
-    
-    // Add some randomization to avoid perfect alignment
-    const randomOffset = 0.2;
-    const xOffset = (Math.random() - 0.5) * randomOffset;
-    const yOffset = (Math.random() - 0.5) * randomOffset;
-    
-    return {
-        name: node.label || node.id || 'Unknown',
-        x: currentRadius * Math.cos(angle) + xOffset,
-        y: currentRadius * Math.sin(angle) + yOffset,
-        type: 'scatter',
-        mode: 'markers+text',
-        marker: {
-            size: Math.max(15, Math.min(25, 35 - nodeCount * 0.5)), // Smaller, more reasonable sizes
-            color: node.type === 'attribute' ? '#3b82f6' : '#22c55e',
-            symbol: node.type === 'attribute' ? 'circle' : 'diamond',
-            line: {
-                color: '#ffffff',
-                width: 2
-            },
-            opacity: 0.9
-        },
-        text: node.label || node.id,
-        textposition: 'top center', // Put text ABOVE nodes to avoid overlap
-        textfont: {
-            size: Math.max(8, Math.min(11, 13 - nodeCount * 0.1)),
-            color: '#1e293b', // Dark text for contrast on light background
-            family: 'Arial, sans-serif',
-            weight: 'bold'
-        },
-        hoverinfo: 'text',
-        hovertext: `<b>${node.label || node.id}</b><br>Type: ${node.type || 'entity'}<br>Data Type: ${node.data_type || 'N/A'}`,
-        hoverlabel: {
-            bgcolor: '#1e293b',
-            bordercolor: '#3b82f6',
-            font: { size: 12, color: '#ffffff' }
-        }
-    };
-});
+        const nodes = data.nodes.map((node, index) => {
+            // Create concentric circles for better distribution
+            const layer = Math.floor(index / 8); // 8 nodes per layer
+            const angleOffset = layer * 0.3; // Rotate each layer slightly
+            const currentRadius = radius + (layer * 0.8); // Increase radius per layer
+            const nodesInLayer = Math.min(8, nodeCount - (layer * 8));
+            const angle = (2 * Math.PI * (index % 8)) / nodesInLayer + angleOffset;
 
-// Debug output - add this after nodes creation
-console.log('Node count:', nodeCount);
-console.log('Radius:', radius);
-console.log('First node position:', nodes[0]);
-console.log('All node positions:', nodes.map(n => ({ name: n.name, x: n.x, y: n.y })));
+            // Add some randomization to avoid perfect alignment
+            const randomOffset = 0.2;
+            const xOffset = (Math.random() - 0.5) * randomOffset;
+            const yOffset = (Math.random() - 0.5) * randomOffset;
+
+            return {
+                name: node.label || node.id || 'Unknown',
+                x: currentRadius * Math.cos(angle) + xOffset,
+                y: currentRadius * Math.sin(angle) + yOffset,
+                type: 'scatter',
+                mode: 'markers+text',
+                marker: {
+                    size: Math.max(15, Math.min(25, 35 - nodeCount * 0.5)), // Smaller, more reasonable sizes
+                    color: node.type === 'attribute' ? '#3b82f6' : '#22c55e',
+                    symbol: node.type === 'attribute' ? 'circle' : 'diamond',
+                    line: {
+                        color: '#ffffff',
+                        width: 2
+                    },
+                    opacity: 0.9
+                },
+                text: node.label || node.id,
+                textposition: 'top center', // Put text ABOVE nodes to avoid overlap
+                textfont: {
+                    size: Math.max(8, Math.min(11, 13 - nodeCount * 0.1)),
+                    color: '#1e293b', // Dark text for contrast on light background
+                    family: 'Arial, sans-serif',
+                    weight: 'bold'
+                },
+                hoverinfo: 'text',
+                hovertext: `<b>${node.label || node.id}</b><br>Type: ${node.type || 'entity'}<br>Data Type: ${node.data_type || 'N/A'}`,
+                hoverlabel: {
+                    bgcolor: '#1e293b',
+                    bordercolor: '#3b82f6',
+                    font: { size: 12, color: '#ffffff' }
+                }
+            };
+        });
+
+        // Debug output - add this after nodes creation
+        console.log('Node count:', nodeCount);
+        console.log('Radius:', radius);
+        console.log('First node position:', nodes[0]);
+        console.log('All node positions:', nodes.map(n => ({ name: n.name, x: n.x, y: n.y })));
 
         // Create edges as lines between nodes
         // Create edges with improved styling
@@ -2638,8 +2717,8 @@ console.log('All node positions:', nodes.map(n => ({ name: n.name, x: n.x, y: n.
                 if (sourceNode !== -1 && targetNode !== -1) {
                     const lineWidth = edge.strength ? Math.max(2, edge.strength * 5) : 2;
                     const lineColor = edge.strength > 0.7 ? '#ef4444' : // Strong = Red
-                                      edge.strength > 0.5 ? '#f59e0b' : // Medium = Orange  
-                                      '#64748b'; // Weak = Gray
+                        edge.strength > 0.5 ? '#f59e0b' : // Medium = Orange  
+                            '#64748b'; // Weak = Gray
 
                     edges.push({
                         type: 'scatter',
@@ -2664,17 +2743,17 @@ console.log('All node positions:', nodes.map(n => ({ name: n.name, x: n.x, y: n.
             showlegend: false,
             hovermode: 'closest',
             margin: { t: 50, l: 50, r: 50, b: 50 }, // More generous margins
-            xaxis: { 
-                showgrid: false, 
-                zeroline: false, 
+            xaxis: {
+                showgrid: false,
+                zeroline: false,
                 showticklabels: false,
                 range: [-4.5, 4.5], // Slightly wider range for better spacing
                 fixedrange: false, // Prevent x-axis zoom
                 //constrain: 'domain', // Constrain to the plot area
             },
-            yaxis: { 
-                showgrid: false, 
-                zeroline: false, 
+            yaxis: {
+                showgrid: false,
+                zeroline: false,
                 showticklabels: false,
                 range: [-4.5, 4.5], // Slightly wider range for better spacing
                 scaleanchor: 'x', // Keep aspect ratio square
@@ -2700,16 +2779,16 @@ console.log('All node positions:', nodes.map(n => ({ name: n.name, x: n.x, y: n.
         plotDiv.style.height = '1200px';
         graphContainer.appendChild(plotDiv);
 
-const config = {
-    responsive: true,
-    displayModeBar: true,
-    modeBarButtonsToRemove: [
-        'select2d', 'lasso2d', 'hoverClosestCartesian', 'hoverCompareCartesian'
-    ],
-    displaylogo: false,
-    doubleClick: 'reset',
-    scrollZoom: true // Enable scroll zoom
-};
+        const config = {
+            responsive: true,
+            displayModeBar: true,
+            modeBarButtonsToRemove: [
+                'select2d', 'lasso2d', 'hoverClosestCartesian', 'hoverCompareCartesian'
+            ],
+            displaylogo: false,
+            doubleClick: 'reset',
+            scrollZoom: true // Enable scroll zoom
+        };
 
         Plotly.newPlot(plotDiv, [...edges, ...nodes], layout, config);
 
@@ -2730,7 +2809,7 @@ const config = {
             const xCoords = edge.x;
             const sourceNode = nodes.find(n => n.x === xCoords[0]);
             const targetNode = nodes.find(n => n.x === xCoords[1]);
-            
+
             if (sourceNode && targetNode) {
                 if (sourceNode.name === nodeName) {
                     connectedNodes.add(targetNode.name);
@@ -2744,7 +2823,7 @@ const config = {
         const updatedNodes = nodes.map(node => {
             const isSelected = node.name === nodeName;
             const isConnected = connectedNodes.has(node.name);
-            
+
             return {
                 marker: {
                     ...node.marker,
@@ -2759,10 +2838,10 @@ const config = {
             const xCoords = edge.x;
             const sourceNode = nodes.find(n => n.x === xCoords[0]);
             const targetNode = nodes.find(n => n.x === xCoords[1]);
-            
-            const isConnected = (sourceNode && targetNode) && 
-                              (sourceNode.name === nodeName || targetNode.name === nodeName);
-            
+
+            const isConnected = (sourceNode && targetNode) &&
+                (sourceNode.name === nodeName || targetNode.name === nodeName);
+
             return {
                 line: {
                     ...edge.line,
@@ -2772,8 +2851,8 @@ const config = {
         });
 
         // Apply updates
-        Plotly.update(plotDiv, 
-            { 
+        Plotly.update(plotDiv,
+            {
                 'marker': updatedNodes.map(n => n.marker),
                 'line': updatedEdges.map(e => e.line)
             }
@@ -2785,11 +2864,11 @@ const config = {
         if (!ontologyInfo) return;
 
         let html = '<div class="ontology-display">';
-        
+
         if (data && data.entities && typeof data.entities === 'object' && Object.keys(data.entities).length > 0) {
             html += `<h4>📋 Entities (${Object.keys(data.entities).length})</h4>`;
             html += '<div class="entity-list">';
-            
+
             Object.entries(data.entities).slice(0, 10).forEach(([name, entity]) => {
                 html += `<div class="entity-item">`;
                 html += `<strong>${this.escapeHtml(name)}</strong> - ${this.escapeHtml(entity.type || 'unknown')}`;
@@ -2798,18 +2877,18 @@ const config = {
                 }
                 html += `</div>`;
             });
-            
+
             if (Object.keys(data.entities).length > 10) {
                 html += `<p><em>... and ${Object.keys(data.entities).length - 10} more</em></p>`;
             }
-            
+
             html += '</div>';
         }
-        
+
         if (data && data.relationships && typeof data.relationships === 'object' && Object.keys(data.relationships).length > 0) {
             html += `<h4>🔗 Relationships (${Object.keys(data.relationships).length})</h4>`;
             html += '<div class="relationship-list">';
-            
+
             Object.entries(data.relationships).slice(0, 5).forEach(([name, rel]) => {
                 if (name && name.includes('-')) {
                     const [source, target] = name.split('-');
@@ -2821,10 +2900,10 @@ const config = {
                     html += `</div>`;
                 }
             });
-            
+
             html += '</div>';
         }
-        
+
         html += '</div>';
         ontologyInfo.innerHTML = html;
     }
@@ -2832,12 +2911,12 @@ const config = {
     addActivity(type, description) {
         const timestamp = new Date().toLocaleTimeString();
         this.activityLog.unshift({ timestamp, type: String(type), description: String(description) });
-        
+
         // Keep only last 10 activities
         if (this.activityLog.length > 10) {
             this.activityLog = this.activityLog.slice(0, 10);
         }
-        
+
         this.updateActivityFeed();
     }
 
@@ -2854,14 +2933,14 @@ const config = {
                 </div>
             `;
         });
-        
+
         activityFeed.innerHTML = html;
     }
 
     showLoading(message = 'Processing...') {
         const overlay = document.getElementById('loadingOverlay');
         const messageElement = document.getElementById('loadingMessage');
-        
+
         if (overlay) {
             overlay.style.display = 'flex';
         }
@@ -2882,7 +2961,7 @@ const config = {
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.textContent = String(message);
-        
+
         // Style the notification
         const styles = {
             position: 'fixed',
@@ -2909,7 +2988,7 @@ const config = {
             warning: '#d97706',
             info: '#3b82f6'
         };
-        
+
         notification.style.background = colors[type] || colors.info;
 
         // Add to page
@@ -2948,7 +3027,7 @@ const config = {
             clearInterval(this.serverCheckInterval);
             this.serverCheckInterval = null;
         }
-        
+
         // Clean up event listeners
         window.removeEventListener('resize', this.handleResize);
         window.removeEventListener('error', this.handleError);
@@ -2974,10 +3053,10 @@ function sendSuggestion(suggestion) {
 // Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM loaded, initializing Digital Twin App...');
-    
+
     try {
         window.app = new DigitalTwinApp();
-        
+
         // Add additional animation styles
         const additionalStyles = `
             @keyframes slideIn {
@@ -2989,11 +3068,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 to { transform: translateX(100%); opacity: 0; }
             }
         `;
-        
+
         const styleSheet = document.createElement('style');
         styleSheet.textContent = additionalStyles;
         document.head.appendChild(styleSheet);
-        
+
     } catch (error) {
         console.error('Failed to initialize application:', error);
         document.body.innerHTML = '<div style="padding: 20px; color: red;">Failed to initialize application. Please refresh the page.</div>';

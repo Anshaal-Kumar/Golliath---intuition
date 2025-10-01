@@ -212,6 +212,113 @@ def ingest_data():
         print(f"❌ Ingestion error: {error_response}")
         return safe_jsonify(error_response), 500
 
+@app.route('/api/data/ingest/excel', methods=['POST'])
+def ingest_excel():
+    global current_data, current_insights
+
+    try:
+        data = request.get_json()
+        excel_content = data.get('excel_content')  # Base64 encoded
+        source_name = data.get('source_name', 'Unnamed Excel Source')
+        sheet_name = data.get('sheet_name', 0)  # Default to first sheet
+        
+        if not excel_content:
+            return safe_jsonify({'error': 'No Excel content provided'}), 400
+
+        print(f"📥 Processing Excel ingestion for source: {source_name}")
+
+        # Decode base64 content
+        import base64
+        from io import BytesIO
+        
+        excel_bytes = base64.b64decode(excel_content)
+        excel_buffer = BytesIO(excel_bytes)
+        
+        # Ingest Excel file
+        current_data = data_engine.ingest_excel(excel_buffer, source_name, sheet_name)
+        
+        if current_data is None or len(current_data) == 0:
+            return safe_jsonify({'error': 'Could not parse Excel file'}), 400
+
+        # Clean and sanitize data (same as CSV processing)
+        current_data.columns = [str(col).strip() for col in current_data.columns]
+        current_data = current_data.dropna(how='all')
+
+        for col in current_data.columns:
+            if current_data[col].dtype == 'object':
+                current_data[col] = current_data[col].astype(str)
+                current_data[col] = current_data[col].apply(
+                    lambda x: str(x).encode('utf-8', errors='ignore').decode('utf-8') if pd.notna(x) else ''
+                )
+
+        print(f"✅ Excel data cleaned. Final shape: {current_data.shape}")
+
+        # AI processing
+        try:
+            processed_data = ai_engine.clean_and_process(current_data)
+            current_insights = ai_engine.extract_patterns(processed_data)
+        except Exception as e:
+            print(f"⚠️ AI processing failed: {e}")
+            current_insights = {'error': str(e)}
+
+        # Build knowledge graph
+        try:
+            ontology_engine.build_knowledge_graph(current_data, current_insights)
+        except Exception as e:
+            print(f"⚠️ Knowledge graph building failed: {e}")
+
+        response_data = {
+            'success': True,
+            'message': f'Successfully ingested {len(current_data)} rows from Excel',
+            'rows': int(len(current_data)),
+            'columns': int(len(current_data.columns)),
+            'column_names': [str(col) for col in current_data.columns],
+            'sample_data': safe_convert(current_data.head(3).to_dict('records')),
+            'data_types': {str(k): str(v) for k, v in current_data.dtypes.to_dict().items()},
+            'insights': safe_convert(current_insights) if current_insights else {}
+        }
+
+        return safe_jsonify(response_data)
+
+    except Exception as e:
+        error_response = {
+            'success': False,
+            'error': f'Excel ingestion failed: {str(e)}',
+            'traceback': traceback.format_exc()
+        }
+        print(f"❌ Excel ingestion error: {error_response}")
+        return safe_jsonify(error_response), 500
+
+
+@app.route('/api/data/excel/sheets', methods=['POST'])
+def get_excel_sheets():
+    """Get list of sheet names from uploaded Excel file"""
+    try:
+        data = request.get_json()
+        excel_content = data.get('excel_content')
+        
+        if not excel_content:
+            return safe_jsonify({'error': 'No Excel content provided'}), 400
+        
+        import base64
+        from io import BytesIO
+        
+        excel_bytes = base64.b64decode(excel_content)
+        excel_buffer = BytesIO(excel_bytes)
+        
+        sheet_names = data_engine.get_excel_sheets(excel_buffer)
+        
+        return safe_jsonify({
+            'success': True,
+            'sheets': sheet_names
+        })
+        
+    except Exception as e:
+        return safe_jsonify({
+            'success': False,
+            'error': f'Failed to read sheets: {str(e)}'
+        }), 500
+
 @app.route('/api/data/current', methods=['GET'])
 def get_current_data():
     global current_data
