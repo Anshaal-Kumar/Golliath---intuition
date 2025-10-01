@@ -17,7 +17,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='ignor
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='ignore')
 
 # Import our core engines
-from digital_twin_core import DataIngestionEngine, AIProcessingEngine, OntologyEngine, SimulationEngine
+from digital_twin_core import DataIngestionEngine, AIProcessingEngine, OntologyEngine, SimulationEngine, CausalAnalysisEngine
 
 # --------------------------
 # Helper functions
