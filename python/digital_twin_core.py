@@ -892,6 +892,7 @@ class CausalAnalysisEngine:
         self.causal_models = {}
     
     def analyze_causality(self, df, treatment_col, outcome_col, confounder_cols=None):
+        
     """
     Estimate causal effect of treatment on outcome
     """
