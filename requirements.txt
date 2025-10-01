@@ -11,3 +11,11 @@ networkx>=3.0
 # plotly>=5.17.0
 # spacy>=3.7.0
 # statsmodels>=0.14.0
+
+statsmodels>=0.14.0        # Time series
+mlxtend>=0.22.0            # Association rules
+shap>=0.43.0               # Explainable AI
+dowhy>=0.10.0              # Causal inference
+prophet>=1.1.5             # Facebook's forecasting (optional)
+xgboost>=2.0.0             # Gradient boosting (better than RF)
+lightgbm>=4.0.0            # Fast gradient boosting

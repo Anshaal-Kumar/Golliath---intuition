@@ -95,6 +95,7 @@ data_engine = DataIngestionEngine()
 ai_engine = AIProcessingEngine()
 ontology_engine = OntologyEngine()
 simulation_engine = SimulationEngine()
+causal_engine = CausalAnalysisEngine()
 
 # --------------------------
 # Global state
@@ -378,6 +379,39 @@ def detect_anomalies():
             'total_records': len(current_data) if current_data is not None else 0
         }), 500
 
+
+@app.route('/api/analysis/cluster/advanced', methods=['POST'])
+def run_advanced_clustering():
+    global current_data
+    
+    try:
+        if current_data is None:
+            return safe_jsonify({'error': 'No data loaded'}), 400
+        
+        data = request.get_json()
+        method = data.get('method', 'dbscan')
+        eps = float(data.get('eps', 0.5))
+        min_samples = int(data.get('min_samples', 5))
+        
+        print(f"Running advanced clustering: {method}")
+        result, message = ai_engine.advanced_clustering(current_data, method, eps, min_samples)
+        
+        if result is None:
+            return safe_jsonify({'success': False, 'error': message}), 400
+        
+        return safe_jsonify({
+            'success': True,
+            'clusters': result,
+            'message': message
+        })
+        
+    except Exception as e:
+        return safe_jsonify({
+            'success': False,
+            'error': f'Advanced clustering failed: {str(e)}'
+        }), 500
+
+
 @app.route('/api/simulation/model/build', methods=['POST'])
 def build_model():
     global current_data
@@ -421,6 +455,58 @@ def build_model():
             'error': f'Model building failed: {str(e)}'
         }), 500
 
+@app.route('/api/simulation/model/explain', methods=['POST'])
+def explain_model():
+    """Generate SHAP explanations for a model"""
+    try:
+        data = request.get_json()
+        target_column = data.get('target_column')
+        
+        if not target_column:
+            return safe_jsonify({'error': 'Target column not specified'}), 400
+        
+        print(f"Generating SHAP explanations for: {target_column}")
+        explanation, message = simulation_engine.explain_predictions(target_column)
+        
+        if explanation is None:
+            return safe_jsonify({'success': False, 'error': message}), 400
+        
+        return safe_jsonify({
+            'success': True,
+            'explanation': safe_convert(explanation),
+            'message': message
+        })
+        
+    except Exception as e:
+        return safe_jsonify({
+            'success': False,
+            'error': f'Explanation generation failed: {str(e)}'
+        }), 500
+
+@app.route('/api/simulation/model/explain', methods=['POST'])
+def explain_model():
+    try:
+        data = request.get_json()
+        target_column = data.get('target_column')
+        
+        print(f"Generating model explanations for: {target_column}")
+        explanation, message = simulation_engine.explain_model(target_column)
+        
+        if explanation is None:
+            return safe_jsonify({'success': False, 'error': message}), 400
+        
+        return safe_jsonify({
+            'success': True,
+            'explanation': explanation,
+            'message': message
+        })
+        
+    except Exception as e:
+        return safe_jsonify({
+            'success': False,
+            'error': f'Model explanation failed: {str(e)}'
+        }), 500
+
 @app.route('/api/simulation/forecast', methods=['POST'])
 def generate_forecast():
     global current_data
@@ -457,6 +543,48 @@ def generate_forecast():
         return safe_jsonify({
             'success': False,
             'error': f'Forecast generation failed: {str(e)}'
+        }), 500
+
+@app.route('/api/simulation/forecast/advanced', methods=['POST'])
+def generate_advanced_forecast():
+    global current_data
+    
+    try:
+        data = request.get_json()
+        target_column = data.get('target_column')
+        periods = int(data.get('periods', 30))
+        method = data.get('method', 'exponential')
+        
+        print(f"Generating advanced forecast for {target_column}, {periods} periods")
+        forecast_data, message = simulation_engine.run_advanced_forecast(target_column, periods, method)
+        
+        if forecast_data is None:
+            return safe_jsonify({'success': False, 'error': message}), 400
+            
+        # Convert forecast data to JSON-safe format
+        safe_forecast = []
+        for item in forecast_data:
+            safe_forecast.append({
+                'date': item['date'].strftime('%Y-%m-%d'),
+                'predicted_value': float(item['predicted_value']),
+                'confidence_interval': float(item['confidence_interval']),
+                'upper_bound': float(item.get('upper_bound', 0)),
+                'lower_bound': float(item.get('lower_bound', 0))
+            })
+        
+        return safe_jsonify({
+            'success': True,
+            'forecast': safe_forecast,
+            'periods': int(periods),
+            'target_column': str(target_column),
+            'method': str(method),
+            'message': message
+        })
+        
+    except Exception as e:
+        return safe_jsonify({
+            'success': False,
+            'error': f'Advanced forecast generation failed: {str(e)}'
         }), 500
 
 @app.route('/api/simulation/whatif', methods=['POST'])

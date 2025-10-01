@@ -81,6 +81,12 @@ class DigitalTwinApp {
             forecastBtn.addEventListener('click', () => this.generateForecast());
         }
 
+        // SetupEventListeners button listeners
+        const causalBtn = document.getElementById('causalAnalysisBtn');
+        if (causalBtn) {
+            causalBtn.addEventListener('click', () => this.runCausalAnalysis());
+        }
+
         // Chat functionality
         const chatSendBtn = document.getElementById('chatSendBtn');
         const chatInput = document.getElementById('chatInput');
@@ -198,6 +204,8 @@ class DigitalTwinApp {
             this.populateTargetColumns();
         } else if (pageId === 'ontology') {
             this.loadKnowledgeGraph();
+        } else if (pageId === 'analysis') {  
+            this.populateCausalColumns();
         }
 
         this.addActivity('Navigation', `Switched to ${pageId} page`);
@@ -438,12 +446,41 @@ class DigitalTwinApp {
                     previewDiv.style.display = 'block';
                     this.currentData = data;
                 }
+
+                this.populateCausalColumns(data.columns, data.dtypes);
             }
         } catch (error) {
             console.error('Failed to show preview:', error);
             this.showNotification('Failed to load data preview', 'error');
         }
     }
+
+    populateCausalColumns(columns, dtypes) {
+        const treatmentSelect = document.getElementById('treatmentColumn');
+        const outcomeSelect = document.getElementById('outcomeColumn');
+    
+        if (!treatmentSelect || !outcomeSelect) return;
+    
+    // Clear existing options
+        treatmentSelect.innerHTML = '<option value="">Choose column...</option>';
+        outcomeSelect.innerHTML = '<option value="">Choose column...</option>';
+    
+    // Add numeric columns only
+       columns.forEach(column => {
+           const dataType = dtypes[column];
+           if (dataType && (dataType.includes('int') || dataType.includes('float'))) {
+               const option1 = document.createElement('option');
+               option1.value = column;
+               option1.textContent = column;
+               treatmentSelect.appendChild(option1);
+            
+               const option2 = document.createElement('option');
+               option2.value = column;
+               option2.textContent = column;
+               outcomeSelect.appendChild(option2);
+        }
+    });
+}
 
     escapeHtml(text) {
         const div = document.createElement('div');
@@ -1005,6 +1042,72 @@ class DigitalTwinApp {
         } finally {
             this.hideLoading();
         }
+    }
+
+    async runCausalAnalysis() {
+        const treatmentCol = document.getElementById('treatmentColumn').value;
+        const outcomeCol = document.getElementById('outcomeColumn').value;
+        
+        if (!treatmentCol || !outcomeCol) {
+            this.showNotification('Please select both treatment and outcome variables', 'warning');
+            return;
+        }
+        
+        this.showLoading('Running causal analysis...');
+        
+        try {
+            const response = await fetch(`${this.serverUrl}/api/analysis/causality`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    treatment_column: treatmentCol,
+                    outcome_column: outcomeCol
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.success) {
+                this.displayCausalResults(result.causal_analysis);
+                this.showNotification('Causal analysis complete!', 'success');
+            } else {
+                this.showNotification(`Analysis failed: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Causal analysis failed:', error);
+            this.showNotification(`Analysis failed: ${error.message}`, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    displayCausalResults(analysis) {
+        const resultsDiv = document.getElementById('causalResults');
+        if (!resultsDiv) return;
+        
+        let html = '<div class="causal-results">';
+        html += '<h4>🔗 Causal Effect Results</h4>';
+        html += `<p><strong>Treatment:</strong> ${this.escapeHtml(analysis.treatment)}</p>`;
+        html += `<p><strong>Outcome:</strong> ${this.escapeHtml(analysis.outcome)}</p>`;
+        html += `<p><strong>Causal Effect:</strong> ${analysis.causal_effect.toFixed(4)}</p>`;
+        html += `<p class="interpretation">${this.escapeHtml(analysis.interpretation)}</p>`;
+        
+        if (analysis.confidence_interval) {
+            html += `<p><strong>95% CI:</strong> [${analysis.confidence_interval[0].toFixed(4)}, ${analysis.confidence_interval[1].toFixed(4)}]</p>`;
+        }
+        
+        if (analysis.confounders && analysis.confounders.length > 0) {
+            html += `<p><strong>Controlled for:</strong> ${analysis.confounders.join(', ')}</p>`;
+        }
+        
+        html += '</div>';
+        resultsDiv.innerHTML = html;
     }
 
     // Enhanced anomaly results display
@@ -1775,6 +1878,37 @@ class DigitalTwinApp {
         }
     }
 
+    populateCausalColumns() {
+        if (!this.currentData) return;
+
+        const treatmentSelect = document.getElementById('treatmentColumn');
+        const outcomeSelect = document.getElementById('outcomeColumn');
+        
+        if (!treatmentSelect || !outcomeSelect) return;
+
+        // Clear existing options
+        treatmentSelect.innerHTML = '<option value="">Choose treatment column...</option>';
+        outcomeSelect.innerHTML = '<option value="">Choose outcome column...</option>';
+
+        // Add numeric columns
+        if (this.currentData.columns && this.currentData.dtypes) {
+            this.currentData.columns.forEach(column => {
+                const dataType = this.currentData.dtypes[column];
+                if (dataType && (dataType.includes('int') || dataType.includes('float'))) {
+                    const option1 = document.createElement('option');
+                    option1.value = column;
+                    option1.textContent = column;
+                    treatmentSelect.appendChild(option1);
+                    
+                    const option2 = document.createElement('option');
+                    option2.value = column;
+                    option2.textContent = column;
+                    outcomeSelect.appendChild(option2);
+                }
+            });
+        }
+    }
+
     async buildModel() {
         if (!this.currentData) {
             this.showNotification('Please load data before building a model', 'warning');
@@ -1831,6 +1965,8 @@ class DigitalTwinApp {
                 this.displayModelResults(result);
                 this.models[targetColumn] = result;
                 
+                await this.explainModel(targetColumn);
+
                 // Enable forecasting
                 const forecastBtn = document.getElementById('forecastBtn');
                 if (forecastBtn) {
@@ -1889,6 +2025,64 @@ class DigitalTwinApp {
 
         this.populateWhatIfControls(result);
     }
+
+    async explainModel(targetColumn) {
+    this.showLoading('Generating model explanations...');
+    
+    try {
+        const response = await fetch(`${this.serverUrl}/api/simulation/model/explain`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ target_column: targetColumn })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        
+        if (result.success) {
+            this.displayShapExplanation(result.explanation);
+            this.showNotification('Model explanation generated!', 'success');
+        } else {
+            this.showNotification(`Explanation failed: ${result.error}`, 'error');
+        }
+    } catch (error) {
+        console.error('Explanation failed:', error);
+        this.showNotification(`Explanation failed: ${error.message}`, 'error');
+    } finally {
+        this.hideLoading();
+    }
+}
+
+displayShapExplanation(explanation) {
+    const resultsDiv = document.getElementById('modelResults');
+    if (!resultsDiv) return;
+    
+    let html = '<div class="shap-explanation" style="margin-top: 20px; padding: 16px; background: rgba(168, 85, 247, 0.1); border-radius: 8px; border-left: 4px solid #a855f7;">';
+    html += '<h4 style="color: #a855f7; margin-bottom: 12px;">🔍 Model Explainability (SHAP)</h4>';
+    html += '<p style="color: #94a3b8; margin-bottom: 12px;">Feature impact on predictions (higher = more important):</p>';
+    html += '<ul style="margin-left: 20px;">';
+    
+    const sorted = Object.entries(explanation.feature_importance)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 10);
+    
+    sorted.forEach(([feature, importance]) => {
+        const percentage = (importance * 100).toFixed(1);
+        html += `<li style="margin-bottom: 8px; color: #e2e8f0;"><strong>${this.escapeHtml(feature)}:</strong> ${importance.toFixed(4)} (${percentage}% impact)</li>`;
+    });
+    
+    html += '</ul>';
+    html += '<p style="margin-top: 12px; font-size: 13px; color: #94a3b8; font-style: italic;">💡 SHAP values show how much each feature contributes to predictions</p>';
+    html += '</div>';
+    
+    // Append to existing results instead of replacing
+    resultsDiv.innerHTML += html;
+}
 
     populateWhatIfControls(modelResult) {
     const whatIfControls = document.getElementById('whatIfControls');
