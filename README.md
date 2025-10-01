@@ -14,8 +14,6 @@ PHASE 1 ( 2-4 weeks)
 
 PHASE 2 ( 5-8 weeks)
 - add more algos ✅
-- add vector database
-- add more file options like, CCTV, xls 
 - try scaling and fix bugs
 - get letter of interests
 
@@ -25,5 +23,14 @@ PHASE 3
 - add internet later so that u can remotely send updates like ML weights or bug fixes
 - add enterprise key on desktop app start page with yearly renewal or else it will be locked
 
+Phase 4 
+- Ship Product(MVP)
+- Get user feedbak
+- Iterate
+
+
+Phase 5
+- add vector database
+- add more file options like, CCTV, xls 
 
 
