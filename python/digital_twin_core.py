@@ -952,33 +952,33 @@ class CausalAnalysisEngine:
                     estimate,
                     method_name="random_common_cause"
             )
-            robustness = str(refutation)
+                robustness = str(refutation)
+            except Exception as e:
+                print(f"Refutation failed: {e}")
+                robustness = "Robustness check not available"
+
+            result = {
+                'treatment': treatment_col,
+                'outcome': outcome_col,
+                'confounders': confounder_cols,
+                'causal_effect': float(estimate.value),
+                'confidence_interval': [
+                    float(estimate.value - 1.96 * getattr(estimate, 'stderr', 0.1)),
+                    float(estimate.value + 1.96 * getattr(estimate, 'stderr', 0.1))
+                ],
+                'interpretation': self._interpret_causal_effect(estimate.value),
+                'robustness_check': robustness,
+                'method': 'Linear Regression (Backdoor Adjustment)'
+            }
+
+            self.causal_models[f"{treatment_col}->{outcome_col}"] = result
+            return result, "Causal analysis completed successfully"
+
+        except ImportError as e:
+            print(f"Import error: {e}")
+            return None, "DoWhy library not installed. Run: pip install dowhy"
         except Exception as e:
-            print(f"Refutation failed: {e}")
-            robustness = "Robustness check not available"
-
-        result = {
-            'treatment': treatment_col,
-            'outcome': outcome_col,
-            'confounders': confounder_cols,
-            'causal_effect': float(estimate.value),
-            'confidence_interval': [
-                float(estimate.value - 1.96 * getattr(estimate, 'stderr', 0.1)),
-                float(estimate.value + 1.96 * getattr(estimate, 'stderr', 0.1))
-            ],
-            'interpretation': self._interpret_causal_effect(estimate.value),
-            'robustness_check': robustness,
-            'method': 'Linear Regression (Backdoor Adjustment)'
-        }
-
-        self.causal_models[f"{treatment_col}->{outcome_col}"] = result
-        return result, "Causal analysis completed successfully"
-
-    except ImportError as e:
-        print(f"Import error: {e}")
-        return None, "DoWhy library not installed. Run: pip install dowhy"
-    except Exception as e:
-        import traceback
-        print(f"Causal analysis error: {e}")
-        traceback.print_exc()
-        return None, f"Causal analysis failed: {str(e)}"
+            import traceback
+            print(f"Causal analysis error: {e}")
+            traceback.print_exc()
+            return None, f"Causal analysis failed: {str(e)}"
