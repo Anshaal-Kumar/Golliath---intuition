@@ -483,29 +483,7 @@ def explain_model():
             'error': f'Explanation generation failed: {str(e)}'
         }), 500
 
-@app.route('/api/simulation/model/explain', methods=['POST'])
-def explain_model():
-    try:
-        data = request.get_json()
-        target_column = data.get('target_column')
-        
-        print(f"Generating model explanations for: {target_column}")
-        explanation, message = simulation_engine.explain_model(target_column)
-        
-        if explanation is None:
-            return safe_jsonify({'success': False, 'error': message}), 400
-        
-        return safe_jsonify({
-            'success': True,
-            'explanation': explanation,
-            'message': message
-        })
-        
-    except Exception as e:
-        return safe_jsonify({
-            'success': False,
-            'error': f'Model explanation failed: {str(e)}'
-        }), 500
+
 
 @app.route('/api/simulation/forecast', methods=['POST'])
 def generate_forecast():
