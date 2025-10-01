@@ -979,6 +979,36 @@ class CausalAnalysisEngine:
             outcome_col: Column representing the outcome
             confounder_cols: List of columns that might confound the relationship
         """
+        print(f"\n=== CAUSAL ANALYSIS DEBUG ===")
+        print(f"Treatment column: {treatment_col}")
+        print(f"Outcome column: {outcome_col}")
+        print(f"DataFrame shape: {df.shape}")
+        print(f"Available columns: {df.columns.tolist()}")
+        print(f"DataFrame dtypes:\n{df.dtypes}")
+    
+        # Check if columns exist
+        if treatment_col not in df.columns:
+            return None, f"Treatment column '{treatment_col}' not found in data"
+        if outcome_col not in df.columns:
+            return None, f"Outcome column '{outcome_col}' not found in data"
+    
+        print(f"Treatment column dtype: {df[treatment_col].dtype}")
+        print(f"Outcome column dtype: {df[outcome_col].dtype}")
+        print(f"Treatment sample values: {df[treatment_col].head().tolist()}")
+        print(f"Outcome sample values: {df[outcome_col].head().tolist()}")
+        print(f"===========================\n")
+        # END DEBUG LINES
+    
+        try:
+            from dowhy import CausalModel
+        
+            # Auto-detect confounders if not provided
+            if confounder_cols is None:
+                numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+                confounder_cols = [col for col in numeric_cols 
+                                  if col not in [treatment_col, outcome_col]][:5]
+        
+    
         try:
             from dowhy import CausalModel
             
