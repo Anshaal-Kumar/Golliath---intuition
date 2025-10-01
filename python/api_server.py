@@ -379,6 +379,48 @@ def detect_anomalies():
             'total_records': len(current_data) if current_data is not None else 0
         }), 500
 
+@app.route('/api/analysis/causality', methods=['POST'])
+def run_causal_analysis():
+    global current_data
+    
+    try:
+        if current_data is None:
+            return safe_jsonify({'error': 'No data loaded'}), 400
+        
+        data = request.get_json()
+        treatment_col = data.get('treatment_column')
+        outcome_col = data.get('outcome_column')
+        
+        if not treatment_col or not outcome_col:
+            return safe_jsonify({'error': 'Both treatment and outcome columns required'}), 400
+        
+        print(f"Running causal analysis: {treatment_col} -> {outcome_col}")
+        
+        # Run causal analysis
+        result, message = causal_engine.analyze_causality(
+            current_data, 
+            treatment_col, 
+            outcome_col
+        )
+        
+        if result is None:
+            return safe_jsonify({'success': False, 'error': message}), 400
+        
+        return safe_jsonify({
+            'success': True,
+            'causal_analysis': safe_convert(result),
+            'message': message
+        })
+        
+    except Exception as e:
+        print(f"Causal analysis failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return safe_jsonify({
+            'success': False,
+            'error': f'Causal analysis failed: {str(e)}'
+        }), 500
 
 @app.route('/api/analysis/cluster/advanced', methods=['POST'])
 def run_advanced_clustering():
