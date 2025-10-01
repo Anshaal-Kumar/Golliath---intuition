@@ -13,7 +13,7 @@ PHASE 1 ( 2-4 weeks)
 
 
 PHASE 2 ( 5-8 weeks)
-- add more algos
+- add more algos ✅
 - add vector database
 - add more file options like, CCTV, xls 
 - try scaling and fix bugs
