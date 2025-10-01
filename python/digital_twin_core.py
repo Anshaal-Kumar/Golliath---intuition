@@ -892,66 +892,65 @@ class CausalAnalysisEngine:
         self.causal_models = {}
     
     def analyze_causality(self, df, treatment_col, outcome_col, confounder_cols=None):
-        
-    """
-    Estimate causal effect of treatment on outcome
-    """
-    print(f"\n=== CAUSAL ANALYSIS DEBUG ===")
-    print(f"Treatment column: {treatment_col}")
-    print(f"Outcome column: {outcome_col}")
-    print(f"DataFrame shape: {df.shape}")
-    print(f"Available columns: {df.columns.tolist()}")
-    print(f"DataFrame dtypes:\n{df.dtypes}")
+        """
+        Estimate causal effect of treatment on outcome
+        """
+        print(f"\n=== CAUSAL ANALYSIS DEBUG ===")
+        print(f"Treatment column: {treatment_col}")
+        print(f"Outcome column: {outcome_col}")
+        print(f"DataFrame shape: {df.shape}")
+        print(f"Available columns: {df.columns.tolist()}")
+        print(f"DataFrame dtypes:\n{df.dtypes}")
 
-    # Check if columns exist
-    if treatment_col not in df.columns:
-        return None, f"Treatment column '{treatment_col}' not found in data"
-    if outcome_col not in df.columns:
-        return None, f"Outcome column '{outcome_col}' not found in data"
+        # Check if columns exist
+        if treatment_col not in df.columns:
+           return None, f"Treatment column '{treatment_col}' not found in data"
+        if outcome_col not in df.columns:
+            return None, f"Outcome column '{outcome_col}' not found in data"
 
-    print(f"Treatment column dtype: {df[treatment_col].dtype}")
-    print(f"Outcome column dtype: {df[outcome_col].dtype}")
-    print(f"Treatment sample values: {df[treatment_col].head().tolist()}")
-    print(f"Outcome sample values: {df[outcome_col].head().tolist()}")
-    print(f"===========================\n")
+        print(f"Treatment column dtype: {df[treatment_col].dtype}")
+        print(f"Outcome column dtype: {df[outcome_col].dtype}")
+        print(f"Treatment sample values: {df[treatment_col].head().tolist()}")
+        print(f"Outcome sample values: {df[outcome_col].head().tolist()}")
+        print(f"===========================\n")
 
-    try:
-        from dowhy import CausalModel
-
-        # Auto-detect confounders if not provided
-        if confounder_cols is None:
-            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-            confounder_cols = [col for col in numeric_cols 
-                              if col not in [treatment_col, outcome_col]][:5]
-
-        print(f"Building causal model: {treatment_col} -> {outcome_col}")
-        print(f"Using confounders: {confounder_cols}")
-
-        # Create causal model
-        model = CausalModel(
-            data=df,
-            treatment=treatment_col,
-            outcome=outcome_col,
-            common_causes=confounder_cols
-        )
-
-        # Identify causal effect
-        identified_estimand = model.identify_effect(proceed_when_unidentifiable=True)
-        print("Causal effect identified")
-
-        # Estimate causal effect using linear regression
-        estimate = model.estimate_effect(
-            identified_estimand,
-            method_name="backdoor.linear_regression"
-        )
-        print(f"Causal effect estimated: {estimate.value}")
-
-        # Refute the estimate (sensitivity analysis)
         try:
-            refutation = model.refute_estimate(
+            from dowhy import CausalModel
+
+            # Auto-detect confounders if not provided
+            if confounder_cols is None:
+               numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+               confounder_cols = [col for col in numeric_cols 
+                                 if col not in [treatment_col, outcome_col]][:5]
+
+            print(f"Building causal model: {treatment_col} -> {outcome_col}")
+            print(f"Using confounders: {confounder_cols}")
+
+            # Create causal model
+            model = CausalModel(
+                data=df,
+                treatment=treatment_col,
+                outcome=outcome_col,
+                common_causes=confounder_cols
+            )
+
+            # Identify causal effect
+            identified_estimand = model.identify_effect(proceed_when_unidentifiable=True)
+            print("Causal effect identified")
+
+            # Estimate causal effect using linear regression
+            estimate = model.estimate_effect(
                 identified_estimand,
-                estimate,
-                method_name="random_common_cause"
+                method_name="backdoor.linear_regression"
+            )
+            print(f"Causal effect estimated: {estimate.value}")
+
+            # Refute the estimate (sensitivity analysis)
+            try:
+                refutation = model.refute_estimate(
+                    identified_estimand,
+                    estimate,
+                    method_name="random_common_cause"
             )
             robustness = str(refutation)
         except Exception as e:
