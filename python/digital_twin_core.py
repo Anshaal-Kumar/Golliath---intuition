@@ -892,119 +892,93 @@ class CausalAnalysisEngine:
         self.causal_models = {}
     
     def analyze_causality(self, df, treatment_col, outcome_col, confounder_cols=None):
-        """
-        Estimate causal effect of treatment on outcome
-        
-        Args:
-            df: DataFrame with data
-            treatment_col: Column representing the treatment/intervention
-            outcome_col: Column representing the outcome
-            confounder_cols: List of columns that might confound the relationship
-        """
-        print(f"\n=== CAUSAL ANALYSIS DEBUG ===")
-        print(f"Treatment column: {treatment_col}")
-        print(f"Outcome column: {outcome_col}")
-        print(f"DataFrame shape: {df.shape}")
-        print(f"Available columns: {df.columns.tolist()}")
-        print(f"DataFrame dtypes:\n{df.dtypes}")
-    
-        # Check if columns exist
-        if treatment_col not in df.columns:
-            return None, f"Treatment column '{treatment_col}' not found in data"
-        if outcome_col not in df.columns:
-            return None, f"Outcome column '{outcome_col}' not found in data"
-    
-        print(f"Treatment column dtype: {df[treatment_col].dtype}")
-        print(f"Outcome column dtype: {df[outcome_col].dtype}")
-        print(f"Treatment sample values: {df[treatment_col].head().tolist()}")
-        print(f"Outcome sample values: {df[outcome_col].head().tolist()}")
-        print(f"===========================\n")
-        # END DEBUG LINES
-    
+    """
+    Estimate causal effect of treatment on outcome
+    """
+    print(f"\n=== CAUSAL ANALYSIS DEBUG ===")
+    print(f"Treatment column: {treatment_col}")
+    print(f"Outcome column: {outcome_col}")
+    print(f"DataFrame shape: {df.shape}")
+    print(f"Available columns: {df.columns.tolist()}")
+    print(f"DataFrame dtypes:\n{df.dtypes}")
+
+    # Check if columns exist
+    if treatment_col not in df.columns:
+        return None, f"Treatment column '{treatment_col}' not found in data"
+    if outcome_col not in df.columns:
+        return None, f"Outcome column '{outcome_col}' not found in data"
+
+    print(f"Treatment column dtype: {df[treatment_col].dtype}")
+    print(f"Outcome column dtype: {df[outcome_col].dtype}")
+    print(f"Treatment sample values: {df[treatment_col].head().tolist()}")
+    print(f"Outcome sample values: {df[outcome_col].head().tolist()}")
+    print(f"===========================\n")
+
+    try:
+        from dowhy import CausalModel
+
+        # Auto-detect confounders if not provided
+        if confounder_cols is None:
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            confounder_cols = [col for col in numeric_cols 
+                              if col not in [treatment_col, outcome_col]][:5]
+
+        print(f"Building causal model: {treatment_col} -> {outcome_col}")
+        print(f"Using confounders: {confounder_cols}")
+
+        # Create causal model
+        model = CausalModel(
+            data=df,
+            treatment=treatment_col,
+            outcome=outcome_col,
+            common_causes=confounder_cols
+        )
+
+        # Identify causal effect
+        identified_estimand = model.identify_effect(proceed_when_unidentifiable=True)
+        print("Causal effect identified")
+
+        # Estimate causal effect using linear regression
+        estimate = model.estimate_effect(
+            identified_estimand,
+            method_name="backdoor.linear_regression"
+        )
+        print(f"Causal effect estimated: {estimate.value}")
+
+        # Refute the estimate (sensitivity analysis)
         try:
-            from dowhy import CausalModel
-        
-            # Auto-detect confounders if not provided
-            if confounder_cols is None:
-                numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-                confounder_cols = [col for col in numeric_cols 
-                                  if col not in [treatment_col, outcome_col]][:5]
-        
-    
-        try:
-            from dowhy import CausalModel
-            
-            # Auto-detect confounders if not provided
-            if confounder_cols is None:
-                numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-                confounder_cols = [col for col in numeric_cols 
-                                  if col not in [treatment_col, outcome_col]][:5]
-            
-            print(f"Building causal model: {treatment_col} -> {outcome_col}")
-            print(f"Using confounders: {confounder_cols}")
-            
-            # Create causal model
-            model = CausalModel(
-                data=df,
-                treatment=treatment_col,
-                outcome=outcome_col,
-                common_causes=confounder_cols
-            )
-            
-            # Identify causal effect
-            identified_estimand = model.identify_effect(proceed_when_unidentifiable=True)
-            print("Causal effect identified")
-            
-            # Estimate causal effect using linear regression
-            estimate = model.estimate_effect(
+            refutation = model.refute_estimate(
                 identified_estimand,
-                method_name="backdoor.linear_regression"
+                estimate,
+                method_name="random_common_cause"
             )
-            print(f"Causal effect estimated: {estimate.value}")
-            
-            # Refute the estimate (sensitivity analysis)
-            try:
-                refutation = model.refute_estimate(
-                    identified_estimand,
-                    estimate,
-                    method_name="random_common_cause"
-                )
-                robustness = str(refutation)
-            except Exception as e:
-                print(f"Refutation failed: {e}")
-                robustness = "Robustness check not available"
-            
-            result = {
-                'treatment': treatment_col,
-                'outcome': outcome_col,
-                'confounders': confounder_cols,
-                'causal_effect': float(estimate.value),
-                'confidence_interval': [
-                    float(estimate.value - 1.96 * getattr(estimate, 'stderr', 0.1)),
-                    float(estimate.value + 1.96 * getattr(estimate, 'stderr', 0.1))
-                ],
-                'interpretation': self._interpret_causal_effect(estimate.value),
-                'robustness_check': robustness,
-                'method': 'Linear Regression (Backdoor Adjustment)'
-            }
-            
-            self.causal_models[f"{treatment_col}->{outcome_col}"] = result
-            return result, "Causal analysis completed successfully"
-            
-        except ImportError as e:
-            print(f"Import error: {e}")
-            return None, "DoWhy library not installed. Run: pip install dowhy"
+            robustness = str(refutation)
         except Exception as e:
-            import traceback
-            print(f"Causal analysis error: {e}")
-            traceback.print_exc()
-            return None, f"Causal analysis failed: {str(e)}"
-    
-    def _interpret_causal_effect(self, effect_value):
-        """Provide human-readable interpretation"""
-        if abs(effect_value) < 0.01:
-            return "Negligible causal effect detected"
-        elif effect_value > 0:
-            return f"Positive causal effect: increasing treatment by 1 unit increases outcome by {effect_value:.4f} units"
-        else:
-            return f"Negative causal effect: increasing treatment by 1 unit decreases outcome by {abs(effect_value):.4f} units"
+            print(f"Refutation failed: {e}")
+            robustness = "Robustness check not available"
+
+        result = {
+            'treatment': treatment_col,
+            'outcome': outcome_col,
+            'confounders': confounder_cols,
+            'causal_effect': float(estimate.value),
+            'confidence_interval': [
+                float(estimate.value - 1.96 * getattr(estimate, 'stderr', 0.1)),
+                float(estimate.value + 1.96 * getattr(estimate, 'stderr', 0.1))
+            ],
+            'interpretation': self._interpret_causal_effect(estimate.value),
+            'robustness_check': robustness,
+            'method': 'Linear Regression (Backdoor Adjustment)'
+        }
+
+        self.causal_models[f"{treatment_col}->{outcome_col}"] = result
+        return result, "Causal analysis completed successfully"
+
+    except ImportError as e:
+        print(f"Import error: {e}")
+        return None, "DoWhy library not installed. Run: pip install dowhy"
+    except Exception as e:
+        import traceback
+        print(f"Causal analysis error: {e}")
+        traceback.print_exc()
+        return None, f"Causal analysis failed: {str(e)}"
