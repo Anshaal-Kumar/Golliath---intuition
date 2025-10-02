@@ -43,27 +43,46 @@ def safe_convert(obj):
     """Recursively convert NumPy types to Python types for JSON"""
     if obj is None:
         return None
+    
+    # Handle NaN and infinity FIRST (critical for JSON serialization)
+    if isinstance(obj, (float, np.floating)):
+        if np.isnan(obj):
+            return None  # Convert NaN to JSON null
+        if np.isinf(obj):
+            return None  # Convert infinity to JSON null
+        return float(obj)
+    
     if isinstance(obj, (np.integer, np.int64, np.int32, np.int16, np.int8)):
         return int(obj)
-    if isinstance(obj, (np.floating, np.float64, np.float32, np.float16)):
-        return float(obj)
+    
     if isinstance(obj, np.bool_):
         return bool(obj)
+    
     if isinstance(obj, np.ndarray):
         return [safe_convert(x) for x in obj.tolist()]
+    
     if isinstance(obj, (list, tuple)):
         return [safe_convert(x) for x in obj]
+    
     if isinstance(obj, dict):
         return {str(k): safe_convert(v) for k, v in obj.items()}
+    
     if isinstance(obj, pd.Series):
         return safe_convert(obj.tolist())
+    
     if isinstance(obj, pd.DataFrame):
         return safe_convert(obj.to_dict('records'))
+    
     if hasattr(obj, 'item'):  # Handle numpy scalars
-        return obj.item()
+        item_val = obj.item()
+        if isinstance(item_val, float) and (np.isnan(item_val) or np.isinf(item_val)):
+            return None
+        return item_val
+    
     # Handle pandas dtypes
     if hasattr(obj, 'dtype'):
         return str(obj)
+    
     return obj
 
 def safe_jsonify(data):
