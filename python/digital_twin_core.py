@@ -1052,3 +1052,20 @@ class CausalAnalysisEngine:
             print(f"Causal analysis error: {e}")
             traceback.print_exc()
             return None, f"Causal analysis failed: {str(e)}"
+
+    def _interpret_causal_effect(self, effect_value):
+        """Interpret causal effect magnitude"""
+        abs_effect = abs(effect_value)
+    
+        if abs_effect < 0.1:
+            magnitude = "negligible"
+        elif abs_effect < 0.5:
+            magnitude = "small"
+        elif abs_effect < 1.0:
+            magnitude = "moderate"
+        else:
+            magnitude = "large"
+    
+        direction = "positive" if effect_value > 0 else "negative"
+    
+        return f"The treatment has a {magnitude} {direction} causal effect on the outcome (effect size: {effect_value:.3f})"

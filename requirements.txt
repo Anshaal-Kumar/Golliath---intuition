@@ -1,22 +1,96 @@
-# Core Dependencies
+# Digital Twin Intelligence Platform - Unified Requirements
+# Installation: pip install -r requirements.txt
+
+# ============================================
+# CORE DEPENDENCIES (Required for basic functionality)
+# ============================================
+
+# Web Framework
 flask>=2.3.0
 flask-cors>=4.0.0
+
+# Data Processing
 pandas>=2.0.0
 numpy>=1.24.0
+
+# Machine Learning Core
 scikit-learn>=1.3.0
 scipy>=1.10.0
-networkx>=3.0
 
-# Optional dependencies for enhanced functionality
-# plotly>=5.17.0
+# Network Analysis & Knowledge Graphs
+networkx>=3.1
+
+# ============================================
+# ANALYTICS & ML (Required for advanced features)
+# ============================================
+
+# Time Series & Statistics
+statsmodels>=0.14.0
+
+# Explainable AI
+shap>=0.43.0
+
+# Causal Inference
+dowhy>=0.10.0
+
+# Gradient Boosting (better than Random Forest)
+xgboost>=2.0.0
+lightgbm>=4.1.0
+
+# Association Rule Mining
+mlxtend>=0.22.0
+
+# ============================================
+# DATA FORMAT SUPPORT (Required for Excel files)
+# ============================================
+
+# Excel file handling (.xlsx)
+openpyxl>=3.1.2
+
+# Legacy Excel files (.xls)
+xlrd>=2.0.1
+
+# ============================================
+# VISUALIZATION (Optional but recommended)
+# ============================================
+
+# Interactive charts
+plotly>=5.15.0
+
+# ============================================
+# FUTURE ENHANCEMENTS (Phase 3 - Currently unused)
+# ============================================
+
+# Uncomment when implementing vector search features:
+# chromadb>=0.4.22
+# sentence-transformers>=2.2.2
+
+# Uncomment when implementing Facebook Prophet forecasting:
+# prophet>=1.1.5
+
+# Uncomment for NLP features:
 # spacy>=3.7.0
-# statsmodels>=0.14.0
-# python -m pip install flask flask-cors pandas numpy scikit-learn scipy networkx statsmodels shap dowhy
+# transformers>=4.30.0
 
-statsmodels>=0.14.0        # Time series
-mlxtend>=0.22.0            # Association rules
-shap>=0.43.0               # Explainable AI
-dowhy>=0.10.0              # Causal inference
-prophet>=1.1.5             # Facebook's forecasting (optional)
-xgboost>=2.0.0             # Gradient boosting (better than RF)
-lightgbm>=4.0.0            # Fast gradient boosting
+# ============================================
+# DEVELOPMENT TOOLS (Optional)
+# ============================================
+
+# jupyter>=1.0.0
+# ipython>=8.0.0
+
+# ============================================
+# INSTALLATION COMMANDS
+# ============================================
+
+# Install all required dependencies:
+# pip install -r requirements.txt
+
+# Or install manually (core only):
+# pip install flask flask-cors pandas numpy scikit-learn scipy networkx statsmodels shap dowhy xgboost lightgbm mlxtend openpyxl xlrd plotly
+
+# For development environment, also install:
+# pip install jupyter ipython
+
+# Verify installation:
+# pip list | grep -E "flask|pandas|numpy|scikit|dowhy|openpyxl"
