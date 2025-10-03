@@ -2649,22 +2649,16 @@ class DigitalTwinApp {
 
         // FIXED: Better node positioning with proper spread
         const nodeCount = data.nodes.length;
-        // Improved radius calculation for better spacing
-        const baseRadius = Math.max(3.0, Math.min(7.0, Math.sqrt(nodeCount) * 1.5));
+        const minRadius = 1.5; // Minimum radius
+        const maxRadius = 3.0; // Maximum radius
+        // Better approach - use D3 force simulation or increase base radius
+        const radius = Math.max(2.0, Math.min(4.0, Math.sqrt(nodeCount) * 0.8));
 
         const nodes = data.nodes.map((node, index) => {
-              // Create concentric circles with 6 nodes per layer (better visual balance)
-            const layer = Math.floor(index / 6); // 6 nodes per layer instead of 8
-            const angleOffset = layer * (Math.PI / 6); // 30-degree rotation per layer
-            const currentRadius = baseRadius + (layer * 1.5); // More spacing between layers
-
-            const nodesInLayer = Math.min(6, nodeCount - (layer * 6));
-            const angle = (2 * Math.PI * (index % 6)) / nodesInLayer + angleOffset;
-
-             // Add controlled randomization to prevent perfect alignment
-            const randomOffset = 0.15; // Reduced from 0.2 for less chaos
-            const xOffset = (Math.random() - 0.5) * randomOffset;
-            const yOffset = (Math.random() - 0.5) * randomOffset;
+            // Create concentric circles for better distribution
+            const layer = Math.floor(index / 8); // 8 nodes per layer
+            const angleOffset = layer * 0.3; // Rotate each layer slightly
+            const currentRadius = radius + (layer * 0.8); // Increase radius per layer
             
 
             return {
