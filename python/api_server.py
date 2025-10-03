@@ -5,8 +5,8 @@ import sys
 import json
 import traceback
 from datetime import datetime
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import Flask, request, jsonify # type: ignore
+from flask_cors import CORS # type: ignore
 import pandas as pd
 import numpy as np
 from io import StringIO
