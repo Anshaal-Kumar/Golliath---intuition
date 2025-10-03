@@ -298,22 +298,24 @@ class AIProcessingEngine:
                 for i in range(len(corr_matrix.columns)):
                     for j in range(i+1, len(corr_matrix.columns)):
                         corr_value = corr_matrix.iloc[i, j]
-                        if not np.isnan(corr_value):
+
+                        if np.isnan(corr_value) or np.isinf(corr_value) or corr_value == 0:
+                            continue
                             # Calculate p-value for statistical significance
-                            try:
+                        try:
                                 _, p_value = pearsonr(df[corr_matrix.columns[i]].dropna(), 
                                                     df[corr_matrix.columns[j]].dropna())
-                            except:
+                        except:
                                 p_value = 1.0
                             
-                            all_correlations.append({
+                        all_correlations.append({
                                 'feature1': corr_matrix.columns[i],
                                 'feature2': corr_matrix.columns[j],
                                 'correlation': float(corr_value),
                                 'abs_correlation': abs(float(corr_value)),
                                 'p_value': float(p_value),
                                 'significant': p_value < 0.05
-                            })
+                        })
                 
                 # Sort by absolute correlation strength
                 all_correlations.sort(key=lambda x: x['abs_correlation'], reverse=True)
@@ -648,7 +650,11 @@ class SimulationEngine:
         """Enhanced model building with better validation"""
         try:
             numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
-            
+        
+            # VALIDATION: Check if dataset has any numeric columns
+            if len(numeric_columns) == 0:
+               return None, "Error: Dataset contains no numeric columns. Machine learning models require numeric data. Please ensure your data includes numerical features."
+        
             if target_column not in numeric_columns:
                 return None, f"Target column '{target_column}' must be numeric. Available numeric columns: {numeric_columns}"
             

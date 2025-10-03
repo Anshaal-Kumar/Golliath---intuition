@@ -126,15 +126,28 @@ function startPythonBackend() {
 function stopPythonBackend() {
     if (pythonProcess && !pythonProcess.killed) {
         console.log('Stopping Python backend...');
-        pythonProcess.kill('SIGTERM');
         
-        // Force kill after 5 seconds if still running
-        setTimeout(() => {
-            if (pythonProcess && !pythonProcess.killed) {
-                console.log('Force killing Python process...');
-                pythonProcess.kill('SIGKILL');
+        // Windows requires taskkill, Unix uses signals
+        if (process.platform === 'win32') {
+            try {
+                // Kill the entire process tree on Windows
+                spawn('taskkill', ['/pid', pythonProcess.pid, '/f', '/t']);
+                console.log('Sent taskkill command to Python process');
+            } catch (error) {
+                console.error('Failed to kill Python process:', error);
             }
-        }, 5000);
+        } else {
+            // Unix-like systems (macOS, Linux)
+            pythonProcess.kill('SIGTERM');
+            
+            // Force kill after 3 seconds if still running
+            setTimeout(() => {
+                if (pythonProcess && !pythonProcess.killed) {
+                    console.log('Force killing Python process...');
+                    pythonProcess.kill('SIGKILL');
+                }
+            }, 3000);
+        }
         
         pythonProcess = null;
     }
