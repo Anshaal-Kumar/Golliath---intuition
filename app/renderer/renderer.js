@@ -2747,7 +2747,7 @@ class DigitalTwinApp {
                 showgrid: false,
                 zeroline: false,
                 showticklabels: false,
-                range: [-8, 8], // Slightly wider range for better spacing
+                range: [-4.5, 4.5], // Slightly wider range for better spacing
                 fixedrange: false, // Prevent x-axis zoom
                 //constrain: 'domain', // Constrain to the plot area
             },
@@ -2755,7 +2755,7 @@ class DigitalTwinApp {
                 showgrid: false,
                 zeroline: false,
                 showticklabels: false,
-                range: [-8, 8], // Slightly wider range for better spacing
+                range: [-4.5, 4.5], // Slightly wider range for better spacing
                 scaleanchor: 'x', // Keep aspect ratio square
                 scaleratio: 1,
                 fixedrange: false, // Prevent y-axis zoom
