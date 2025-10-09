@@ -383,30 +383,41 @@ def generate_pivot():
         agg_func = data.get('agg_func', 'sum')
         
         # VALIDATION
+        print(f"📋 Received pivot request: rows={rows}, columns={columns}, values={values}, agg={agg_func}")
+        print(f"📋 Available columns: {list(current_data.columns)}")
+        
         if not rows or len(rows) == 0:
             return safe_jsonify({'success': False, 'error': 'At least one row field required'}), 400
         
-        if not values:
-            return safe_jsonify({'success': False, 'error': 'Value field required'}), 400
+        if not values or values == '':
+            return safe_jsonify({'success': False, 'error': 'Please select a value field to aggregate'}), 400
         
-        # Check if columns exist in dataframe
-        missing_cols = [col for col in rows if col not in current_data.columns]
-        if missing_cols:
+        # Check if row columns exist in dataframe
+        missing_rows = [col for col in rows if col not in current_data.columns]
+        if missing_rows:
             return safe_jsonify({
                 'success': False, 
-                'error': f'Columns not found: {", ".join(missing_cols)}'
+                'error': f'Row fields not found in data: {", ".join(missing_rows)}'
             }), 400
         
+        # Check if value column exists and is numeric
         if values not in current_data.columns:
             return safe_jsonify({
                 'success': False, 
-                'error': f'Value column "{values}" not found'
+                'error': f'Value field "{values}" not found in data. Available columns: {", ".join(current_data.columns[:5])}'
             }), 400
         
-        if columns and columns != 'None' and columns not in current_data.columns:
+        # Verify value column is numeric
+        if not pd.api.types.is_numeric_dtype(current_data[values]):
+            return safe_jsonify({
+                'success': False,
+                'error': f'Value field "{values}" must be numeric. Please select a numeric column.'
+            }), 400
+        
+        if columns and columns != 'None' and columns != '' and columns not in current_data.columns:
             return safe_jsonify({
                 'success': False, 
-                'error': f'Column field "{columns}" not found'
+                'error': f'Column field "{columns}" not found in data'
             }), 400
         
         print(f"🔄 Generating pivot: rows={rows}, columns={columns}, values={values}, agg={agg_func}")
