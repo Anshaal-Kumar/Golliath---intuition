@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,6 +8,7 @@
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
 </head>
+
 <body>
     <!-- Header -->
     <header class="app-header">
@@ -47,6 +49,9 @@
                 </button>
                 <button class="nav-button" data-page="chat">
                     💬 AI Chat
+                </button>
+                <button class="nav-button" data-page="pivot">
+                    📊 Pivot Table
                 </button>
             </div>
 
@@ -133,7 +138,7 @@
                             Choose File
                         </button>
                     </div>
-                    
+
                     <div id="fileInfo" style="display: none;">
                         <h4 id="fileName"></h4>
                         <div class="form-group">
@@ -181,24 +186,24 @@
                         <div id="anomalyResults"></div>
                     </div>
                     <div class="content-card">
-                         <h3>🔗 Causal Analysis</h3>
-                         <div class="form-group">
-                              <label>Treatment Variable:</label>
-                              <select id="treatmentColumn">
-                                 <option value="">Choose column...</option>
-                              </select>
-                          </div>
-                          <div class="form-group">
-                              <label>Outcome Variable:</label>
-                              <select id="outcomeColumn">
-                                  <option value="">Choose column...</option>
-                              </select>
-                          </div>
-                          <button class="analysis-button" id="causalAnalysisBtn">
-                              Analyze Causality
-                          </button>
-                          <div id="causalResults"></div>
-                      </div>
+                        <h3>🔗 Causal Analysis</h3>
+                        <div class="form-group">
+                            <label>Treatment Variable:</label>
+                            <select id="treatmentColumn">
+                                <option value="">Choose column...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Outcome Variable:</label>
+                            <select id="outcomeColumn">
+                                <option value="">Choose column...</option>
+                            </select>
+                        </div>
+                        <button class="analysis-button" id="causalAnalysisBtn">
+                            Analyze Causality
+                        </button>
+                        <div id="causalResults"></div>
+                    </div>
                 </div>
             </div>
 
@@ -287,7 +292,8 @@
                         <div class="chat-message assistant">
                             <div class="message-avatar">🤖</div>
                             <div class="message-content">
-                                Hello! I'm your AI assistant. Upload some data and I can help you analyze it, find patterns, and answer questions about your digital twin.
+                                Hello! I'm your AI assistant. Upload some data and I can help you analyze it, find
+                                patterns, and answer questions about your digital twin.
                             </div>
                         </div>
                     </div>
@@ -311,6 +317,66 @@
                     </div>
                 </div>
             </div>
+            <!-- Pivot Table Page -->
+            <div class="page" id="pivot" style="display: none;">
+                <div class="page-header">
+                    <h2>📊 Pivot Table</h2>
+                    <p>Interactive data aggregation and cross-tabulation</p>
+                </div>
+
+                <div class="content-card">
+                    <h3>⚙️ Configure Pivot</h3>
+
+                    <div class="pivot-config">
+                        <div class="form-group">
+                            <label>Rows (Group By):</label>
+                            <select id="pivotRows" multiple size="3">
+                                <option value="">Load data first...</option>
+                            </select>
+                            <small style="color: #94a3b8;">Hold Ctrl/Cmd to select multiple</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Columns (Optional):</label>
+                            <select id="pivotColumns">
+                                <option value="None">None</option>
+                            </select>
+                            <small style="color: #94a3b8;">For cross-tabulation</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Values (Aggregate):</label>
+                            <select id="pivotValues">
+                                <option value="">Choose numeric column...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Aggregation Function:</label>
+                            <select id="pivotAggFunc">
+                                <option value="sum">Sum</option>
+                                <option value="mean">Average</option>
+                                <option value="count">Count</option>
+                                <option value="min">Minimum</option>
+                                <option value="max">Maximum</option>
+                                <option value="median">Median</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button class="analysis-button" id="generatePivotBtn">
+                        📊 Generate Pivot Table
+                    </button>
+                </div>
+
+                <div id="pivotResults" class="content-card" style="display: none;">
+                    <h3>📋 Pivot Table Results</h3>
+                    <div id="pivotTable"></div>
+                    <button class="action-button" id="downloadPivotCSV" style="margin-top: 16px;">
+                        💾 Download as CSV
+                    </button>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -324,4 +390,5 @@
 
     <script src="renderer.js"></script>
 </body>
+
 </html>

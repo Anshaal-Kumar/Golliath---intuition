@@ -366,6 +366,77 @@ def get_current_data():
     except Exception as e:
         return safe_jsonify({'error': f'Failed to get current data: {str(e)}'}), 500
 
+@app.route('/api/data/pivot', methods=['POST'])
+def generate_pivot():
+    global current_data
+    
+    try:
+        if current_data is None:
+            return safe_jsonify({'error': 'No data loaded'}), 400
+        
+        data = request.get_json()
+        rows = data.get('rows', [])
+        columns = data.get('columns')
+        values = data.get('values')
+        agg_func = data.get('agg_func', 'sum')
+        
+        if not rows:
+            return safe_jsonify({'error': 'At least one row field required'}), 400
+        
+        if not values:
+            return safe_jsonify({'error': 'Value field required'}), 400
+        
+        print(f"🔄 Generating pivot: rows={rows}, columns={columns}, values={values}, agg={agg_func}")
+        
+        # Create pivot table
+        if columns and columns != 'None':
+            pivot = pd.pivot_table(
+                current_data,
+                values=values,
+                index=rows,
+                columns=columns,
+                aggfunc=agg_func,
+                fill_value=0
+            )
+        else:
+            # Simple groupby without columns
+            pivot = current_data.groupby(rows)[values].agg(agg_func)
+        
+        # Convert to dict for JSON
+        if isinstance(pivot, pd.Series):
+            pivot_dict = pivot.reset_index().to_dict('records')
+        else:
+            pivot_dict = pivot.reset_index().to_dict('records')
+        
+        # Get column names
+        column_names = list(pivot.reset_index().columns)
+        
+        print(f"✅ Pivot generated: {len(pivot_dict)} rows")
+        
+        return safe_jsonify({
+            'success': True,
+            'pivot_data': safe_convert(pivot_dict),
+            'columns': column_names,
+            'row_count': len(pivot_dict),
+            'summary': {
+                'rows': rows,
+                'columns': columns,
+                'values': values,
+                'aggregation': agg_func
+            }
+        })
+        
+    except Exception as e:
+        print(f"❌ Pivot generation failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return safe_jsonify({
+            'success': False,
+            'error': f'Pivot generation failed: {str(e)}'
+        }), 500
+
+
 @app.route('/api/system/status', methods=['GET'])
 def get_system_status():
     try:

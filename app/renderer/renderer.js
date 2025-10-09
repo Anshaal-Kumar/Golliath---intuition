@@ -90,6 +90,16 @@ class DigitalTwinApp {
         // Chat functionality
         const chatSendBtn = document.getElementById('chatSendBtn');
         const chatInput = document.getElementById('chatInput');
+        // Pivot table functionality
+        const generatePivotBtn = document.getElementById('generatePivotBtn');
+        if (generatePivotBtn) {
+            generatePivotBtn.addEventListener('click', () => this.generatePivot());
+        }
+
+        const downloadPivotBtn = document.getElementById('downloadPivotCSV');
+        if (downloadPivotBtn) {
+            downloadPivotBtn.addEventListener('click', () => this.downloadPivotCSV());
+        }
 
         if (chatSendBtn) {
             chatSendBtn.addEventListener('click', () => this.sendChatMessage());
@@ -206,6 +216,8 @@ class DigitalTwinApp {
             this.loadKnowledgeGraph();
         } else if (pageId === 'analysis') {
             this.populateCausalColumns();
+        } else if (pageId === 'pivot') {
+            this.populatePivotSelectors();
         }
 
         this.addActivity('Navigation', `Switched to ${pageId} page`);
@@ -532,6 +544,190 @@ class DigitalTwinApp {
             console.error('Failed to show preview:', error);
             this.showNotification('Failed to load data preview', 'error');
         }
+    }
+
+
+    async generatePivot() {
+        const rows = Array.from(document.getElementById('pivotRows').selectedOptions).map(opt => opt.value);
+        const columns = document.getElementById('pivotColumns').value;
+        const values = document.getElementById('pivotValues').value;
+        const aggFunc = document.getElementById('pivotAggFunc').value;
+        
+        if (rows.length === 0) {
+            this.showNotification('Please select at least one row field', 'warning');
+            return;
+        }
+        
+        if (!values) {
+            this.showNotification('Please select a value field', 'warning');
+            return;
+        }
+        
+        this.showLoading('Generating pivot table...');
+        this.addActivity('Pivot Analysis', `Grouping by ${rows.join(', ')}`);
+        
+        try {
+            const response = await fetch(`${this.serverUrl}/api/data/pivot`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    rows: rows,
+                    columns: columns !== 'None' ? columns : null,
+                    values: values,
+                    agg_func: aggFunc
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                this.displayPivotTable(result);
+                this.showNotification('Pivot table generated!', 'success');
+                this.addActivity('Pivot Complete', `${result.row_count} rows generated`);
+            } else {
+                this.showNotification(`Failed: ${result.error}`, 'error');
+            }
+            
+        } catch (error) {
+            console.error('Pivot generation failed:', error);
+            this.showNotification(`Failed: ${error.message}`, 'error');
+            this.addActivity('Pivot Failed', error.message);
+        } finally {
+            this.hideLoading();
+        }
+    }
+
+    displayPivotTable(result) {
+        const resultsDiv = document.getElementById('pivotResults');
+        const tableDiv = document.getElementById('pivotTable');
+        
+        if (!resultsDiv || !tableDiv) return;
+        
+        let html = '<div class="data-table"><table><thead><tr>';
+        
+        // Headers
+        result.columns.forEach(col => {
+            html += `<th>${this.escapeHtml(col)}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+        
+        // Data rows
+        result.pivot_data.forEach(row => {
+            html += '<tr>';
+            result.columns.forEach(col => {
+                const value = row[col];
+                let displayValue = '';
+                if (value !== null && value !== undefined) {
+                    if (typeof value === 'number' && value % 1 !== 0) {
+                        displayValue = value.toFixed(2);
+                    } else {
+                        displayValue = String(value);
+                    }
+                }
+                html += `<td>${this.escapeHtml(displayValue)}</td>`;
+            });
+            html += '</tr>';
+        });
+        
+        html += '</tbody></table></div>';
+        
+        // Summary info
+        html += `<div class="pivot-summary">
+            <p><strong>📊 Summary:</strong></p>
+            <ul>
+                <li>Grouped by: <strong>${result.summary.rows.join(', ')}</strong></li>
+                ${result.summary.columns && result.summary.columns !== 'None' ? `<li>Columns: <strong>${result.summary.columns}</strong></li>` : ''}
+                <li>Values: <strong>${result.summary.values}</strong></li>
+                <li>Aggregation: <strong>${result.summary.aggregation}</strong></li>
+                <li>Total rows: <strong>${result.row_count}</strong></li>
+            </ul>
+        </div>`;
+        
+        tableDiv.innerHTML = html;
+        resultsDiv.style.display = 'block';
+        
+        // Store pivot data for download
+        window.currentPivotData = result;
+    }
+
+    populatePivotSelectors() {
+        if (!this.currentData) return;
+        
+        const rowsSelect = document.getElementById('pivotRows');
+        const columnsSelect = document.getElementById('pivotColumns');
+        const valuesSelect = document.getElementById('pivotValues');
+        
+        if (!rowsSelect || !columnsSelect || !valuesSelect) return;
+        
+        // Clear existing options
+        rowsSelect.innerHTML = '';
+        columnsSelect.innerHTML = '<option value="None">None</option>';
+        valuesSelect.innerHTML = '<option value="">Choose column...</option>';
+        
+        // Populate with all columns
+        this.currentData.columns.forEach(col => {
+            // Rows selector (all columns)
+            const rowOption = document.createElement('option');
+            rowOption.value = col;
+            rowOption.textContent = col;
+            rowsSelect.appendChild(rowOption);
+            
+            // Columns selector (all columns)
+            const colOption = document.createElement('option');
+            colOption.value = col;
+            colOption.textContent = col;
+            columnsSelect.appendChild(colOption);
+            
+            // Values selector (only numeric)
+            const dtype = this.currentData.dtypes[col];
+            if (dtype && (dtype.includes('int') || dtype.includes('float'))) {
+                const valOption = document.createElement('option');
+                valOption.value = col;
+                valOption.textContent = col;
+                valuesSelect.appendChild(valOption);
+            }
+        });
+    }
+
+    downloadPivotCSV() {
+        if (!window.currentPivotData) {
+            this.showNotification('No pivot data to download', 'warning');
+            return;
+        }
+        
+        const data = window.currentPivotData.pivot_data;
+        const columns = window.currentPivotData.columns;
+        
+        // Convert to CSV
+        let csv = columns.join(',') + '\n';
+        data.forEach(row => {
+            const values = columns.map(col => {
+                const val = row[col];
+                if (val === null || val === undefined) return '';
+                // Escape values that contain commas
+                const strVal = String(val);
+                return strVal.includes(',') ? `"${strVal}"` : strVal;
+            });
+            csv += values.join(',') + '\n';
+        });
+        
+        // Download
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pivot_table_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+        
+        this.showNotification('Pivot table downloaded!', 'success');
+        this.addActivity('Export', 'Pivot table downloaded as CSV');
     }
 
     populateCausalColumns(columns, dtypes) {
