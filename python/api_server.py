@@ -366,13 +366,15 @@ def get_current_data():
     except Exception as e:
         return safe_jsonify({'error': f'Failed to get current data: {str(e)}'}), 500
 
+# FIXED PIVOT TABLE ROUTE - Replace in api_server.py starting at line 258
+
 @app.route('/api/data/pivot', methods=['POST'])
 def generate_pivot():
     global current_data
     
     try:
         if current_data is None:
-            return safe_jsonify({'error': 'No data loaded'}), 400
+            return safe_jsonify({'success': False, 'error': 'No data loaded'}), 400
         
         data = request.get_json()
         rows = data.get('rows', [])
@@ -380,51 +382,149 @@ def generate_pivot():
         values = data.get('values')
         agg_func = data.get('agg_func', 'sum')
         
-        if not rows:
-            return safe_jsonify({'error': 'At least one row field required'}), 400
+        # VALIDATION
+        if not rows or len(rows) == 0:
+            return safe_jsonify({'success': False, 'error': 'At least one row field required'}), 400
         
         if not values:
-            return safe_jsonify({'error': 'Value field required'}), 400
+            return safe_jsonify({'success': False, 'error': 'Value field required'}), 400
+        
+        # Check if columns exist in dataframe
+        missing_cols = [col for col in rows if col not in current_data.columns]
+        if missing_cols:
+            return safe_jsonify({
+                'success': False, 
+                'error': f'Columns not found: {", ".join(missing_cols)}'
+            }), 400
+        
+        if values not in current_data.columns:
+            return safe_jsonify({
+                'success': False, 
+                'error': f'Value column "{values}" not found'
+            }), 400
+        
+        if columns and columns != 'None' and columns not in current_data.columns:
+            return safe_jsonify({
+                'success': False, 
+                'error': f'Column field "{columns}" not found'
+            }), 400
         
         print(f"🔄 Generating pivot: rows={rows}, columns={columns}, values={values}, agg={agg_func}")
         
-        # Create pivot table
-        if columns and columns != 'None':
-            pivot = pd.pivot_table(
-                current_data,
-                values=values,
-                index=rows,
-                columns=columns,
-                aggfunc=agg_func,
-                fill_value=0
-            )
-        else:
-            # Simple groupby without columns
-            pivot = current_data.groupby(rows)[values].agg(agg_func)
+        # CLEAN DATA - Remove NaN/Infinity from numeric columns
+        pivot_data = current_data.copy()
         
-        # Convert to dict for JSON
-        if isinstance(pivot, pd.Series):
-            pivot_dict = pivot.reset_index().to_dict('records')
-        else:
-            pivot_dict = pivot.reset_index().to_dict('records')
+        # Replace inf with NaN, then drop
+        pivot_data.replace([np.inf, -np.inf], np.nan, inplace=True)
         
-        # Get column names
-        column_names = list(pivot.reset_index().columns)
+        # Only keep rows where value column is valid
+        pivot_data = pivot_data[pivot_data[values].notna()]
         
-        print(f"✅ Pivot generated: {len(pivot_dict)} rows")
+        if len(pivot_data) == 0:
+            return safe_jsonify({
+                'success': False,
+                'error': f'No valid data in "{values}" column after removing NaN/Infinity'
+            }), 400
         
-        return safe_jsonify({
-            'success': True,
-            'pivot_data': safe_convert(pivot_dict),
-            'columns': column_names,
-            'row_count': len(pivot_dict),
-            'summary': {
-                'rows': rows,
-                'columns': columns,
-                'values': values,
-                'aggregation': agg_func
+        # MAP AGGREGATION FUNCTIONS
+        agg_func_map = {
+            'sum': 'sum',
+            'mean': 'mean',
+            'count': 'count',
+            'min': 'min',
+            'max': 'max',
+            'median': 'median',
+            'std': 'std'
+        }
+        
+        pandas_agg = agg_func_map.get(agg_func, 'sum')
+        
+        # CREATE PIVOT TABLE
+        try:
+            if columns and columns != 'None':
+                # With columns (cross-tabulation)
+                pivot = pd.pivot_table(
+                    pivot_data,
+                    values=values,
+                    index=rows,
+                    columns=columns,
+                    aggfunc=pandas_agg,
+                    fill_value=0,
+                    dropna=True
+                )
+                
+                # Flatten multi-level columns if present
+                if isinstance(pivot.columns, pd.MultiIndex):
+                    pivot.columns = ['_'.join(map(str, col)).strip() for col in pivot.columns.values]
+                
+                pivot_df = pivot.reset_index()
+                
+            else:
+                # Simple groupby without columns
+                pivot = pivot_data.groupby(rows)[values].agg(pandas_agg).reset_index()
+                pivot_df = pivot
+            
+            # RENAME VALUE COLUMN FOR CLARITY
+            if columns and columns != 'None':
+                # Already has meaningful column names from pivot
+                pass
+            else:
+                # Rename aggregated column
+                agg_col_name = f"{values}_{agg_func}"
+                if values in pivot_df.columns and len(pivot_df.columns) == len(rows) + 1:
+                    pivot_df.columns = list(rows) + [agg_col_name]
+            
+            # CLEAN OUTPUT - Replace any remaining NaN/Infinity
+            pivot_df.replace([np.inf, -np.inf], 0, inplace=True)
+            pivot_df.fillna(0, inplace=True)
+            
+            # Convert to records (ensure JSON serializable)
+            pivot_records = []
+            for _, row in pivot_df.iterrows():
+                record = {}
+                for col in pivot_df.columns:
+                    value = row[col]
+                    # Handle numeric types
+                    if isinstance(value, (np.integer, np.int64, np.int32)):
+                        record[str(col)] = int(value)
+                    elif isinstance(value, (np.floating, float)):
+                        if np.isnan(value) or np.isinf(value):
+                            record[str(col)] = 0
+                        else:
+                            record[str(col)] = float(value)
+                    else:
+                        record[str(col)] = str(value)
+                pivot_records.append(record)
+            
+            column_names = [str(col) for col in pivot_df.columns]
+            
+            print(f"✅ Pivot generated: {len(pivot_records)} rows, {len(column_names)} columns")
+            
+            # Build response
+            response = {
+                'success': True,
+                'pivot_data': pivot_records,
+                'columns': column_names,
+                'row_count': len(pivot_records),
+                'summary': {
+                    'rows': rows,
+                    'columns': columns if columns and columns != 'None' else None,
+                    'values': values,
+                    'aggregation': agg_func
+                }
             }
-        })
+            
+            return safe_jsonify(response)
+            
+        except Exception as pivot_error:
+            print(f"❌ Pivot table creation failed: {str(pivot_error)}")
+            import traceback
+            traceback.print_exc()
+            
+            return safe_jsonify({
+                'success': False,
+                'error': f'Pivot table creation failed: {str(pivot_error)}'
+            }), 500
         
     except Exception as e:
         print(f"❌ Pivot generation failed: {str(e)}")
