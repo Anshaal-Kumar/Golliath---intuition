@@ -547,263 +547,320 @@ class DigitalTwinApp {
     }
 
 
-    async generatePivot() {
-        const rows = Array.from(document.getElementById('pivotRows').selectedOptions).map(opt => opt.value);
-        const columns = document.getElementById('pivotColumns').value;
-        const values = document.getElementById('pivotValues').value;
-        const aggFunc = document.getElementById('pivotAggFunc').value;
-        
-        if (rows.length === 0) {
-            this.showNotification('Please select at least one row field', 'warning');
-            return;
-        }
-        
-        if (!values) {
-            this.showNotification('Please select a value field', 'warning');
-            return;
-        }
-        
-        this.showLoading('Generating pivot table...');
-        this.addActivity('Pivot Analysis', `Grouping by ${rows.join(', ')}`);
-        
-        try {
-            const response = await fetch(`${this.serverUrl}/api/data/pivot`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    rows: rows,
-                    columns: columns !== 'None' ? columns : null,
-                    values: values,
-                    agg_func: aggFunc
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            
-            const result = await response.json();
-            
-            if (result.success) {
-                this.displayPivotTable(result);
-                this.showNotification('Pivot table generated!', 'success');
-                this.addActivity('Pivot Complete', `${result.row_count} rows generated`);
-            } else {
-                this.showNotification(`Failed: ${result.error}`, 'error');
-            }
-            
-        } catch (error) {
-            console.error('Pivot generation failed:', error);
-            this.showNotification(`Failed: ${error.message}`, 'error');
-            this.addActivity('Pivot Failed', error.message);
-        } finally {
-            this.hideLoading();
-        }
-    }
+    // FIXED PIVOT TABLE METHODS - Replace in renderer.js starting around line 730
 
-    displayPivotTable(result) {
-        const resultsDiv = document.getElementById('pivotResults');
-        const tableDiv = document.getElementById('pivotTable');
+async generatePivot() {
+    const rowsSelect = document.getElementById('pivotRows');
+    const columnsSelect = document.getElementById('pivotColumns');
+    const valuesSelect = document.getElementById('pivotValues');
+    const aggFuncSelect = document.getElementById('pivotAggFunc');
+    
+    // Check if elements exist
+    if (!rowsSelect || !columnsSelect || !valuesSelect || !aggFuncSelect) {
+        console.error('Pivot form elements not found');
+        this.showNotification('Pivot table form not properly loaded', 'error');
+        return;
+    }
+    
+    // Get selected rows (multi-select)
+    const rows = Array.from(rowsSelect.selectedOptions).map(opt => opt.value);
+    const columns = columnsSelect.value;
+    const values = valuesSelect.value;
+    const aggFunc = aggFuncSelect.value;
+    
+    console.log('Pivot request:', { rows, columns, values, aggFunc });
+    
+    // VALIDATION
+    if (rows.length === 0) {
+        this.showNotification('❌ Please select at least one row field (use Ctrl+Click for multiple)', 'warning');
+        rowsSelect.focus();
+        return;
+    }
+    
+    if (!values || values === '') {
+        this.showNotification('❌ Please select a numeric value field to aggregate', 'warning');
+        valuesSelect.focus();
+        return;
+    }
+    
+    if (!aggFunc || aggFunc === '') {
+        this.showNotification('❌ Please select an aggregation function', 'warning');
+        aggFuncSelect.focus();
+        return;
+    }
+    
+    this.showLoading('Generating pivot table...');
+    this.addActivity('Pivot Analysis', `Grouping by ${rows.join(', ')}, aggregating ${values}`);
+    
+    try {
+        const requestBody = {
+            rows: rows,
+            columns: (columns && columns !== 'None') ? columns : null,
+            values: values,
+            agg_func: aggFunc
+        };
         
-        if (!resultsDiv || !tableDiv) return;
+        console.log('Sending pivot request:', requestBody);
         
-        let html = '<div class="data-table"><table><thead><tr>';
-        
-        // Headers
-        result.columns.forEach(col => {
-            html += `<th>${this.escapeHtml(col)}</th>`;
+        const response = await fetch(`${this.serverUrl}/api/data/pivot`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
         });
-        html += '</tr></thead><tbody>';
         
-        // Data rows
-        result.pivot_data.forEach(row => {
-            html += '<tr>';
-            result.columns.forEach(col => {
-                const value = row[col];
-                let displayValue = '';
-                if (value !== null && value !== undefined) {
-                    if (typeof value === 'number' && value % 1 !== 0) {
-                        displayValue = value.toFixed(2);
+        const responseText = await response.text();
+        console.log('Pivot response status:', response.status);
+        console.log('Pivot response text:', responseText.substring(0, 500));
+        
+        let result;
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            console.error('JSON parse error:', e);
+            throw new Error(`Server returned invalid JSON. Status: ${response.status}. Response: ${responseText.substring(0, 200)}`);
+        }
+        
+        if (!response.ok) {
+            const errorMsg = result.error || `Server error (HTTP ${response.status})`;
+            throw new Error(errorMsg);
+        }
+        
+        if (result.success) {
+            console.log('Pivot generated successfully:', result);
+            this.displayPivotTable(result);
+            this.showNotification(`✅ Pivot table generated! ${result.row_count} rows created`, 'success');
+            this.addActivity('Pivot Complete', `${result.row_count} rows generated`);
+        } else {
+            throw new Error(result.error || 'Pivot generation failed');
+        }
+        
+    } catch (error) {
+        console.error('Pivot generation failed:', error);
+        this.showNotification(`❌ Failed to generate pivot: ${error.message}`, 'error');
+        this.addActivity('Pivot Failed', error.message);
+    } finally {
+        this.hideLoading();
+    }
+}
+
+displayPivotTable(result) {
+    const resultsDiv = document.getElementById('pivotResults');
+    const tableDiv = document.getElementById('pivotTable');
+    
+    if (!resultsDiv || !tableDiv) return;
+    
+    // Validate data
+    if (!result.pivot_data || result.pivot_data.length === 0) {
+        tableDiv.innerHTML = '<p class="loading-message">No data to display</p>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+    
+    if (!result.columns || result.columns.length === 0) {
+        tableDiv.innerHTML = '<p class="loading-message">No columns to display</p>';
+        resultsDiv.style.display = 'block';
+        return;
+    }
+    
+    let html = '<div class="data-table"><table><thead><tr>';
+    
+    // Headers - filter out empty columns
+    const validColumns = result.columns.filter(col => col && col.trim() !== '');
+    
+    validColumns.forEach(col => {
+        html += `<th>${this.escapeHtml(col)}</th>`;
+    });
+    html += '</tr></thead><tbody>';
+    
+    // Data rows - limit display and filter empty values
+    const maxDisplayRows = 100;
+    const displayData = result.pivot_data.slice(0, maxDisplayRows);
+    
+    displayData.forEach(row => {
+        html += '<tr>';
+        validColumns.forEach(col => {
+            const value = row[col];
+            let displayValue = '';
+            
+            if (value !== null && value !== undefined && value !== '') {
+                if (typeof value === 'number') {
+                    // Format numbers nicely
+                    if (Number.isInteger(value)) {
+                        displayValue = value.toLocaleString();
                     } else {
-                        displayValue = String(value);
+                        displayValue = value.toFixed(2);
+                    }
+                } else {
+                    const strVal = String(value).trim();
+                    if (strVal !== 'nan' && strVal !== 'None' && strVal !== '') {
+                        displayValue = strVal;
+                    } else {
+                        displayValue = '-';
                     }
                 }
-                html += `<td>${this.escapeHtml(displayValue)}</td>`;
-            });
-            html += '</tr>';
-        });
-        
-        html += '</tbody></table></div>';
-        
-        // Summary info
-        html += `<div class="pivot-summary">
-            <p><strong>📊 Summary:</strong></p>
-            <ul>
-                <li>Grouped by: <strong>${result.summary.rows.join(', ')}</strong></li>
-                ${result.summary.columns && result.summary.columns !== 'None' ? `<li>Columns: <strong>${result.summary.columns}</strong></li>` : ''}
-                <li>Values: <strong>${result.summary.values}</strong></li>
-                <li>Aggregation: <strong>${result.summary.aggregation}</strong></li>
-                <li>Total rows: <strong>${result.row_count}</strong></li>
-            </ul>
-        </div>`;
-        
-        tableDiv.innerHTML = html;
-        resultsDiv.style.display = 'block';
-        
-        // Store pivot data for download
-        window.currentPivotData = result;
-    }
-
-    populatePivotSelectors() {
-        if (!this.currentData) return;
-        
-        const rowsSelect = document.getElementById('pivotRows');
-        const columnsSelect = document.getElementById('pivotColumns');
-        const valuesSelect = document.getElementById('pivotValues');
-        
-        if (!rowsSelect || !columnsSelect || !valuesSelect) return;
-        
-        // Clear existing options
-        rowsSelect.innerHTML = '';
-        columnsSelect.innerHTML = '<option value="None">None</option>';
-        valuesSelect.innerHTML = '<option value="">Choose column...</option>';
-        
-        // Populate with all columns
-        this.currentData.columns.forEach(col => {
-            // Rows selector (all columns)
-            const rowOption = document.createElement('option');
-            rowOption.value = col;
-            rowOption.textContent = col;
-            rowsSelect.appendChild(rowOption);
-            
-            // Columns selector (all columns)
-            const colOption = document.createElement('option');
-            colOption.value = col;
-            colOption.textContent = col;
-            columnsSelect.appendChild(colOption);
-            
-            // Values selector (only numeric)
-            const dtype = this.currentData.dtypes[col];
-            if (dtype && (dtype.includes('int') || dtype.includes('float'))) {
-                const valOption = document.createElement('option');
-                valOption.value = col;
-                valOption.textContent = col;
-                valuesSelect.appendChild(valOption);
+            } else {
+                displayValue = '-';
             }
+            
+            html += `<td>${this.escapeHtml(displayValue)}</td>`;
         });
+        html += '</tr>';
+    });
+    
+    html += '</tbody></table></div>';
+    
+    // Summary info with better labels
+    const aggFuncLabels = {
+        'sum': 'Sum',
+        'mean': 'Average',
+        'count': 'Count',
+        'min': 'Minimum',
+        'max': 'Maximum',
+        'median': 'Median',
+        'std': 'Standard Deviation'
+    };
+    
+    const aggLabel = aggFuncLabels[result.summary.aggregation] || result.summary.aggregation;
+    
+    html += `<div class="pivot-summary">
+        <p><strong>📊 Pivot Table Summary:</strong></p>
+        <ul>
+            <li>Grouped by: <strong>${result.summary.rows.join(', ')}</strong></li>
+            ${result.summary.columns ? `<li>Columns: <strong>${result.summary.columns}</strong></li>` : ''}
+            <li>Values: <strong>${result.summary.values}</strong></li>
+            <li>Aggregation: <strong>${aggLabel}</strong></li>
+            <li>Rows shown: <strong>${displayData.length.toLocaleString()}</strong> ${result.row_count > maxDisplayRows ? `(of ${result.row_count.toLocaleString()} total)` : ''}</li>
+        </ul>
+    </div>`;
+    
+    if (result.row_count > maxDisplayRows) {
+        html += `<div class="pivot-notice" style="padding: 12px; background: rgba(245, 158, 11, 0.1); border-radius: 8px; margin-top: 12px; border-left: 4px solid #f59e0b;">
+            <p style="color: #f59e0b; margin: 0;"><strong>ℹ️ Note:</strong> Displaying first ${maxDisplayRows} rows. Download CSV for complete data.</p>
+        </div>`;
     }
+    
+    tableDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+    
+    // Store pivot data for download
+    window.currentPivotData = result;
+}
 
-    downloadPivotCSV() {
-        if (!window.currentPivotData) {
-            this.showNotification('No pivot data to download', 'warning');
-            return;
+populatePivotSelectors() {
+    if (!this.currentData) {
+        console.log('No current data available for pivot selectors');
+        return;
+    }
+    
+    const rowsSelect = document.getElementById('pivotRows');
+    const columnsSelect = document.getElementById('pivotColumns');
+    const valuesSelect = document.getElementById('pivotValues');
+    
+    if (!rowsSelect || !columnsSelect || !valuesSelect) {
+        console.error('Pivot selector elements not found');
+        return;
+    }
+    
+    console.log('Populating pivot selectors with columns:', this.currentData.columns);
+    
+    // Clear existing options
+    rowsSelect.innerHTML = '';
+    columnsSelect.innerHTML = '<option value="None">None</option>';
+    valuesSelect.innerHTML = '<option value="">-- Select a numeric column --</option>';
+    
+    let numericCount = 0;
+    
+    // Populate with all columns
+    this.currentData.columns.forEach(col => {
+        // Rows selector (all columns can be grouped)
+        const rowOption = document.createElement('option');
+        rowOption.value = col;
+        rowOption.textContent = col;
+        rowsSelect.appendChild(rowOption);
+        
+        // Columns selector (all columns can be pivoted)
+        const colOption = document.createElement('option');
+        colOption.value = col;
+        colOption.textContent = col;
+        columnsSelect.appendChild(colOption);
+        
+        // Values selector (only numeric columns can be aggregated)
+        const dtype = this.currentData.dtypes[col];
+        if (dtype && (dtype.includes('int') || dtype.includes('float'))) {
+            const valOption = document.createElement('option');
+            valOption.value = col;
+            valOption.textContent = `${col} (${dtype})`;
+            valuesSelect.appendChild(valOption);
+            numericCount++;
         }
-        
-        const data = window.currentPivotData.pivot_data;
-        const columns = window.currentPivotData.columns;
-        
-        // Convert to CSV
+    });
+    
+    console.log(`Pivot selectors populated: ${this.currentData.columns.length} total columns, ${numericCount} numeric columns`);
+    
+    // Show warning if no numeric columns
+    if (numericCount === 0) {
+        valuesSelect.innerHTML = '<option value="">⚠️ No numeric columns found</option>';
+        this.showNotification('⚠️ Your data has no numeric columns. Pivot tables require at least one numeric column to aggregate.', 'warning');
+    }
+}
+
+downloadPivotCSV() {
+    if (!window.currentPivotData) {
+        this.showNotification('No pivot data to download', 'warning');
+        return;
+    }
+    
+    const data = window.currentPivotData.pivot_data;
+    const columns = window.currentPivotData.columns;
+    
+    if (!data || data.length === 0) {
+        this.showNotification('No data to download', 'warning');
+        return;
+    }
+    
+    try {
+        // Convert to CSV with proper escaping
         let csv = columns.join(',') + '\n';
+        
         data.forEach(row => {
             const values = columns.map(col => {
                 const val = row[col];
                 if (val === null || val === undefined) return '';
-                // Escape values that contain commas
+                
                 const strVal = String(val);
-                return strVal.includes(',') ? `"${strVal}"` : strVal;
+                // Escape values that contain commas or quotes
+                if (strVal.includes(',') || strVal.includes('"') || strVal.includes('\n')) {
+                    return `"${strVal.replace(/"/g, '""')}"`;
+                }
+                return strVal;
             });
             csv += values.join(',') + '\n';
         });
         
-        // Download
-        const blob = new Blob([csv], { type: 'text/csv' });
+        // Create download
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `pivot_table_${new Date().toISOString().slice(0,10)}.csv`;
+        
+        // Generate filename with timestamp
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+        a.download = `pivot_table_${timestamp}.csv`;
+        
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
         
-        this.showNotification('Pivot table downloaded!', 'success');
+        this.showNotification('Pivot table downloaded successfully!', 'success');
         this.addActivity('Export', 'Pivot table downloaded as CSV');
+    } catch (error) {
+        console.error('Download failed:', error);
+        this.showNotification(`Download failed: ${error.message}`, 'error');
     }
-
-    populateCausalColumns(columns, dtypes) {
-        const treatmentSelect = document.getElementById('treatmentColumn');
-        const outcomeSelect = document.getElementById('outcomeColumn');
-
-        if (!treatmentSelect || !outcomeSelect) return;
-
-        // Clear existing options
-        treatmentSelect.innerHTML = '<option value="">Choose column...</option>';
-        outcomeSelect.innerHTML = '<option value="">Choose column...</option>';
-
-        // Add numeric columns only
-        columns.forEach(column => {
-            const dataType = dtypes[column];
-            if (dataType && (dataType.includes('int') || dataType.includes('float'))) {
-                const option1 = document.createElement('option');
-                option1.value = column;
-                option1.textContent = column;
-                treatmentSelect.appendChild(option1);
-
-                const option2 = document.createElement('option');
-                option2.value = column;
-                option2.textContent = column;
-                outcomeSelect.appendChild(option2);
-            }
-        });
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    async runPatternAnalysis() {
-        if (!this.currentData) {
-            this.showNotification('Please load data first', 'warning');
-            return;
-        }
-
-        this.showLoading('Analyzing patterns with AI...');
-        this.addActivity('Analysis', 'Running pattern analysis');
-
-        try {
-            const response = await fetch(`${this.serverUrl}/api/analysis/patterns`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const result = await response.json();
-
-            if (result.success) {
-                this.displayPatternResults(result.insights);
-                await this.visualizePatterns(result.insights);
-                const summary = result.summary || {};
-                const correlationCount = summary.strong_correlations_found || 0;
-                this.addActivity('Analysis Complete', `Found ${correlationCount} strong correlations`);
-            } else {
-                this.showNotification(`Analysis failed: ${result.error}`, 'error');
-                this.addActivity('Analysis Failed', result.error);
-            }
-        } catch (error) {
-            console.error('Pattern analysis failed:', error);
-            this.showNotification(`Analysis failed: ${error.message}`, 'error');
-            this.addActivity('Analysis Failed', error.message);
-        } finally {
-            this.hideLoading();
-        }
-    }
+}
 
     // Enhanced pattern analysis display
     displayPatternResults(insights) {

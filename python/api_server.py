@@ -429,13 +429,26 @@ def generate_pivot():
         pivot_data.replace([np.inf, -np.inf], np.nan, inplace=True)
         
         # Only keep rows where value column is valid
+        initial_count = len(pivot_data)
         pivot_data = pivot_data[pivot_data[values].notna()]
+        dropped_count = initial_count - len(pivot_data)
+        
+        if dropped_count > 0:
+            print(f"⚠️ Dropped {dropped_count} rows with invalid values in '{values}' column")
         
         if len(pivot_data) == 0:
             return safe_jsonify({
                 'success': False,
-                'error': f'No valid data in "{values}" column after removing NaN/Infinity'
+                'error': f'No valid numeric data in "{values}" column. All values are NaN or Infinity.'
             }), 400
+        
+        # Also ensure row columns don't have all NaN
+        for row_col in rows:
+            if pivot_data[row_col].isna().all():
+                return safe_jsonify({
+                    'success': False,
+                    'error': f'Row field "{row_col}" contains no valid data (all NaN)'
+                }), 400
         
         # MAP AGGREGATION FUNCTIONS
         agg_func_map = {
@@ -452,7 +465,8 @@ def generate_pivot():
         
         # CREATE PIVOT TABLE
         try:
-            if columns and columns != 'None':
+            if columns and columns != 'None' and columns != '':
+                print(f"Creating pivot table with columns: {columns}")
                 # With columns (cross-tabulation)
                 pivot = pd.pivot_table(
                     pivot_data,
@@ -471,38 +485,48 @@ def generate_pivot():
                 pivot_df = pivot.reset_index()
                 
             else:
+                print(f"Creating simple groupby pivot")
                 # Simple groupby without columns
-                pivot = pivot_data.groupby(rows)[values].agg(pandas_agg).reset_index()
+                pivot = pivot_data.groupby(rows, dropna=True)[values].agg(pandas_agg).reset_index()
                 pivot_df = pivot
-            
-            # RENAME VALUE COLUMN FOR CLARITY
-            if columns and columns != 'None':
-                # Already has meaningful column names from pivot
-                pass
-            else:
-                # Rename aggregated column
+                
+                # Rename the aggregated column to be more descriptive
                 agg_col_name = f"{values}_{agg_func}"
-                if values in pivot_df.columns and len(pivot_df.columns) == len(rows) + 1:
-                    pivot_df.columns = list(rows) + [agg_col_name]
+                pivot_df.columns = list(rows) + [agg_col_name]
             
             # CLEAN OUTPUT - Replace any remaining NaN/Infinity
             pivot_df.replace([np.inf, -np.inf], 0, inplace=True)
             pivot_df.fillna(0, inplace=True)
             
+            # Ensure we have data
+            if len(pivot_df) == 0:
+                return safe_jsonify({
+                    'success': False,
+                    'error': 'Pivot table generated no results. Check your data and selections.'
+                }), 400
+            
+            print(f"✅ Pivot dataframe created with shape: {pivot_df.shape}")
+            print(f"Columns: {list(pivot_df.columns)}")
+            print(f"First few rows:\n{pivot_df.head()}")
+            
             # Convert to records (ensure JSON serializable)
             pivot_records = []
-            for _, row in pivot_df.iterrows():
+            for idx, row in pivot_df.iterrows():
                 record = {}
                 for col in pivot_df.columns:
                     value = row[col]
                     # Handle numeric types
-                    if isinstance(value, (np.integer, np.int64, np.int32)):
+                    if pd.isna(value):
+                        record[str(col)] = 0
+                    elif isinstance(value, (np.integer, np.int64, np.int32, np.int16, np.int8)):
                         record[str(col)] = int(value)
-                    elif isinstance(value, (np.floating, float)):
+                    elif isinstance(value, (np.floating, np.float64, np.float32, float)):
                         if np.isnan(value) or np.isinf(value):
                             record[str(col)] = 0
                         else:
                             record[str(col)] = float(value)
+                    elif isinstance(value, bool):
+                        record[str(col)] = str(value)
                     else:
                         record[str(col)] = str(value)
                 pivot_records.append(record)
