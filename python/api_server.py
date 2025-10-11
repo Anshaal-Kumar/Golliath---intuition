@@ -338,34 +338,6 @@ def get_excel_sheets():
             'error': f'Failed to read sheets: {str(e)}'
         }), 500
 
-@app.route('/api/data/current', methods=['GET'])
-def get_current_data():
-    global current_data
-    try:
-        if current_data is None:
-            return safe_jsonify({'error': 'No data loaded'}), 404
-
-        # Get basic statistics safely
-        numeric_cols = current_data.select_dtypes(include=[np.number]).columns
-        stats_dict = {}
-        
-        if len(numeric_cols) > 0:
-            stats_df = current_data[numeric_cols].describe()
-            stats_dict = {str(col): safe_convert(stats_df[col].to_dict()) for col in stats_df.columns}
-
-        response = {
-            'shape': [int(current_data.shape[0]), int(current_data.shape[1])],
-            'columns': [str(col) for col in current_data.columns],
-            'dtypes': {str(k): str(v) for k, v in current_data.dtypes.to_dict().items()},
-            'sample': safe_convert(current_data.head(5).to_dict('records')),
-            'statistics': stats_dict
-        }
-        
-        return safe_jsonify(response)
-
-    except Exception as e:
-        return safe_jsonify({'error': f'Failed to get current data: {str(e)}'}), 500
-
 # FIXED PIVOT TABLE ROUTE - Replace in api_server.py starting at line 258
 
 @app.route('/api/data/pivot', methods=['POST'])

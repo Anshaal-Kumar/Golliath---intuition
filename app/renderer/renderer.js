@@ -495,56 +495,147 @@ class DigitalTwinApp {
         });
     }
 
-    async showDataPreview() {
+    // FIXED DATA PREVIEW - Replace showDataPreview() method in renderer.js (around line 600)
+
+async showDataPreview() {
+    console.log('Attempting to show data preview...');
+    
+    try {
+        const response = await fetch(`${this.serverUrl}/api/data/current`);
+        
+        console.log('Preview response status:', response.status);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const responseText = await response.text();
+        console.log('Preview response (first 200 chars):', responseText.substring(0, 200));
+        
+        let data;
         try {
-            const response = await fetch(`${this.serverUrl}/api/data/current`);
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
+            data = JSON.parse(responseText);
+        } catch (e) {
+            console.error('Failed to parse preview JSON:', e);
+            throw new Error('Invalid JSON response from server');
+        }
 
-            const data = await response.json();
+        console.log('Parsed preview data:', {
+            shape: data.shape,
+            columnsCount: data.columns?.length,
+            sampleCount: data.sample?.length
+        });
 
-            if (data.shape && data.columns && data.sample) {
-                const previewDiv = document.getElementById('dataPreview');
-                const tableDiv = document.getElementById('dataTable');
+        // Validate data structure
+        if (!data.shape || !data.columns || !data.sample) {
+            console.error('Invalid data structure:', data);
+            throw new Error('Invalid data structure received from server');
+        }
 
-                if (previewDiv && tableDiv) {
-                    let tableHTML = '<div class="data-table"><table><thead><tr>';
-                    data.columns.forEach(col => {
-                        tableHTML += `<th>${this.escapeHtml(col)}</th>`;
-                    });
-                    tableHTML += '</tr></thead><tbody>';
+        const previewDiv = document.getElementById('dataPreview');
+        const tableDiv = document.getElementById('dataTable');
 
-                    data.sample.slice(0, 10).forEach(row => {
-                        tableHTML += '<tr>';
-                        data.columns.forEach(col => {
-                            const value = row[col];
-                            let displayValue = '';
-                            if (value !== null && value !== undefined) {
-                                if (typeof value === 'number' && value % 1 !== 0) {
+        if (!previewDiv || !tableDiv) {
+            console.error('Preview div or table div not found');
+            return;
+        }
+
+        // Build table HTML
+        let tableHTML = '<div class="data-table"><table><thead><tr>';
+        
+        // Headers
+        data.columns.forEach(col => {
+            tableHTML += `<th>${this.escapeHtml(String(col))}</th>`;
+        });
+        tableHTML += '</tr></thead><tbody>';
+
+        // Data rows (limit to 10)
+        const sampleRows = data.sample.slice(0, 10);
+        console.log(`Displaying ${sampleRows.length} sample rows`);
+
+        if (sampleRows.length === 0) {
+            tableHTML += '<tr><td colspan="' + data.columns.length + '" style="text-align: center; padding: 20px;">No sample data available</td></tr>';
+        } else {
+            sampleRows.forEach((row, rowIndex) => {
+                tableHTML += '<tr>';
+                data.columns.forEach(col => {
+                    const value = row[col];
+                    let displayValue = '';
+                    
+                    try {
+                        if (value !== null && value !== undefined) {
+                            if (typeof value === 'number') {
+                                if (value % 1 !== 0) {
                                     displayValue = value.toFixed(2);
                                 } else {
                                     displayValue = String(value);
                                 }
+                            } else {
+                                displayValue = String(value);
                             }
-                            tableHTML += `<td>${this.escapeHtml(displayValue)}</td>`;
-                        });
-                        tableHTML += '</tr>';
-                    });
-                    tableHTML += '</tbody></table></div>';
-
-                    tableDiv.innerHTML = tableHTML;
-                    previewDiv.style.display = 'block';
-                    this.currentData = data;
-                }
-
-                this.populateCausalColumns(data.columns, data.dtypes);
-            }
-        } catch (error) {
-            console.error('Failed to show preview:', error);
-            this.showNotification('Failed to load data preview', 'error');
+                        } else {
+                            displayValue = '-';
+                        }
+                    } catch (e) {
+                        console.warn(`Error formatting value at row ${rowIndex}, col ${col}:`, e);
+                        displayValue = '-';
+                    }
+                    
+                    tableHTML += `<td>${this.escapeHtml(displayValue)}</td>`;
+                });
+                tableHTML += '</tr>';
+            });
         }
+
+        tableHTML += '</tbody></table></div>';
+
+        // Add data info
+        tableHTML += `<div style="margin-top: 16px; padding: 12px; background: rgba(59, 130, 246, 0.1); border-radius: 8px;">
+            <p style="color: #60a5fa; margin: 0;"><strong>📊 Data Info:</strong> ${data.shape[0]} rows × ${data.shape[1]} columns</p>
+        </div>`;
+
+        tableDiv.innerHTML = tableHTML;
+        previewDiv.style.display = 'block';
+        
+        // Store current data
+        this.currentData = data;
+        
+        console.log('✅ Data preview displayed successfully');
+
+        // Populate selectors for other features
+        try {
+            this.populateCausalColumns(data.columns, data.dtypes);
+            console.log('Populated causal columns');
+        } catch (e) {
+            console.warn('Failed to populate causal columns:', e);
+        }
+
+        // Show success notification
+        this.showNotification('Data preview loaded successfully', 'success');
+        
+    } catch (error) {
+        console.error('❌ Failed to show preview:', error);
+        
+        const previewDiv = document.getElementById('dataPreview');
+        const tableDiv = document.getElementById('dataTable');
+        
+        if (tableDiv) {
+            tableDiv.innerHTML = `
+                <div style="padding: 20px; text-align: center; color: #ef4444;">
+                    <p><strong>⚠️ Failed to load data preview</strong></p>
+                    <p style="font-size: 14px; color: #94a3b8;">${this.escapeHtml(error.message)}</p>
+                    <p style="font-size: 12px; color: #64748b; margin-top: 8px;">Check the console for more details</p>
+                </div>
+            `;
+        }
+        
+        if (previewDiv) {
+            previewDiv.style.display = 'block';
+        }
+        
+        this.showNotification(`Failed to load preview: ${error.message}`, 'error');
     }
+}
 
 
     // FIXED PIVOT TABLE METHODS - Replace in renderer.js starting around line 730
