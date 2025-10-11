@@ -308,6 +308,85 @@ def ingest_excel():
         print(f"❌ Excel ingestion error: {error_response}")
         return safe_jsonify(error_response), 500
 
+# Add this route to your api_server.py file
+# Place it after the /api/data/ingest route (around line 260)
+
+@app.route('/api/data/current', methods=['GET'])
+def get_current_data():
+    """Get current loaded data with preview"""
+    global current_data
+    
+    try:
+        if current_data is None:
+            return safe_jsonify({
+                'error': 'No data loaded',
+                'shape': [0, 0],
+                'columns': [],
+                'sample': [],
+                'dtypes': {}
+            }), 404
+        
+        print(f"📊 Fetching current data preview. Shape: {current_data.shape}")
+        
+        # Get sample data (first 10 rows)
+        sample_size = min(10, len(current_data))
+        sample_data = current_data.head(sample_size)
+        
+        # Convert to records format, handling NaN/Infinity
+        sample_records = []
+        for idx, row in sample_data.iterrows():
+            record = {}
+            for col in current_data.columns:
+                value = row[col]
+                
+                # Handle different data types safely
+                if pd.isna(value):
+                    record[str(col)] = None
+                elif isinstance(value, (np.integer, np.int64, np.int32)):
+                    record[str(col)] = int(value)
+                elif isinstance(value, (np.floating, np.float64, float)):
+                    if np.isnan(value) or np.isinf(value):
+                        record[str(col)] = None
+                    else:
+                        record[str(col)] = float(value)
+                elif isinstance(value, bool):
+                    record[str(col)] = bool(value)
+                else:
+                    record[str(col)] = str(value)
+            
+            sample_records.append(record)
+        
+        # Get data types
+        dtypes_dict = {}
+        for col in current_data.columns:
+            dtypes_dict[str(col)] = str(current_data[col].dtype)
+        
+        response_data = {
+            'success': True,
+            'shape': [int(current_data.shape[0]), int(current_data.shape[1])],
+            'columns': [str(col) for col in current_data.columns],
+            'sample': sample_records,
+            'dtypes': dtypes_dict,
+            'memory_usage_mb': float(current_data.memory_usage(deep=True).sum() / 1024 / 1024)
+        }
+        
+        print(f"✅ Returning data preview: {len(sample_records)} rows, {len(response_data['columns'])} columns")
+        
+        return safe_jsonify(response_data)
+        
+    except Exception as e:
+        error_msg = f'Failed to get current data: {str(e)}'
+        print(f"❌ {error_msg}")
+        import traceback
+        traceback.print_exc()
+        
+        return safe_jsonify({
+            'error': error_msg,
+            'shape': [0, 0],
+            'columns': [],
+            'sample': [],
+            'dtypes': {}
+        }), 500
 
 @app.route('/api/data/excel/sheets', methods=['POST'])
 def get_excel_sheets():
