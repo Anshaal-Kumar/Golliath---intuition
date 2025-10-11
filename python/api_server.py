@@ -419,6 +419,8 @@ def get_excel_sheets():
 
 # FIXED PIVOT TABLE ROUTE - Replace in api_server.py starting at line 258
 
+# ENHANCED PIVOT TABLE - Add to api_server.py
+
 @app.route('/api/data/pivot', methods=['POST'])
 def generate_pivot_enhanced():
     global current_data
@@ -462,6 +464,21 @@ def generate_pivot_enhanced():
                         pivot_data = pivot_data[pivot_data[col].isin(filter_values)]
                     else:
                         pivot_data = pivot_data[pivot_data[col] == filter_values]
+        
+        # 🔧 FIX: Ensure row columns are proper dtypes (flatten any nested structures)
+        for row_col in rows:
+            if row_col in pivot_data.columns:
+                # Convert to string to avoid multi-dimensional grouper issues
+                if pivot_data[row_col].dtype == 'object':
+                    pivot_data[row_col] = pivot_data[row_col].astype(str)
+                # Fill NaN in grouping columns
+                pivot_data[row_col] = pivot_data[row_col].fillna('(blank)')
+        
+        # 🔧 FIX: Ensure column field is also clean
+        if columns and columns != 'None' and columns in pivot_data.columns:
+            if pivot_data[columns].dtype == 'object':
+                pivot_data[columns] = pivot_data[columns].astype(str)
+            pivot_data[columns] = pivot_data[columns].fillna('(blank)')
         
         # Clean data
         pivot_data.replace([np.inf, -np.inf], np.nan, inplace=True)
