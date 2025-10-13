@@ -750,6 +750,7 @@ async generatePivot() {
     }
 }
 
+// 🔧 ENHANCED: Display pivot with better formatting
 displayPivotTable(result) {
     const resultsDiv = document.getElementById('pivotResults');
     const tableDiv = document.getElementById('pivotTable');
@@ -783,8 +784,15 @@ displayPivotTable(result) {
     const maxDisplayRows = 100;
     const displayData = result.pivot_data.slice(0, maxDisplayRows);
     
-    displayData.forEach(row => {
-        html += '<tr>';
+    // 🔧 FIX: Identify TOTAL row for highlighting
+    const hasTotals = result.summary?.has_totals || false;
+    const totalRowIndex = hasTotals ? displayData.length - 1 : -1;
+    
+    displayData.forEach((row, rowIndex) => {
+        const isTotalRow = hasTotals && rowIndex === totalRowIndex;
+        const rowClass = isTotalRow ? 'class="total-row"' : '';
+        
+        html += `<tr ${rowClass}>`;
         validColumns.forEach(col => {
             const value = row[col];
             let displayValue = '';
@@ -809,7 +817,8 @@ displayPivotTable(result) {
                 displayValue = '-';
             }
             
-            html += `<td>${this.escapeHtml(displayValue)}</td>`;
+            const cellClass = isTotalRow ? 'class="total-cell"' : '';
+            html += `<td ${cellClass}>${this.escapeHtml(displayValue)}</td>`;
         });
         html += '</tr>';
     });
@@ -827,16 +836,18 @@ displayPivotTable(result) {
         'std': 'Standard Deviation'
     };
     
-    const aggLabel = aggFuncLabels[result.summary.aggregation] || result.summary.aggregation;
+    const summary = result.summary || {};
+    const aggLabel = aggFuncLabels[summary.aggregation || summary.aggregations?.[summary.values]] || 'Sum';
     
     html += `<div class="pivot-summary">
         <p><strong>📊 Pivot Table Summary:</strong></p>
         <ul>
-            <li>Grouped by: <strong>${result.summary.rows.join(', ')}</strong></li>
-            ${result.summary.columns ? `<li>Columns: <strong>${result.summary.columns}</strong></li>` : ''}
-            <li>Values: <strong>${result.summary.values}</strong></li>
+            <li>Grouped by: <strong>${summary.rows?.join(', ') || 'N/A'}</strong></li>
+            ${summary.columns ? `<li>Columns: <strong>${summary.columns}</strong></li>` : ''}
+            <li>Values: <strong>${summary.values || 'N/A'}</strong></li>
             <li>Aggregation: <strong>${aggLabel}</strong></li>
             <li>Rows shown: <strong>${displayData.length.toLocaleString()}</strong> ${result.row_count > maxDisplayRows ? `(of ${result.row_count.toLocaleString()} total)` : ''}</li>
+            ${hasTotals ? '<li>✅ <strong>Grand totals included</strong></li>' : ''}
         </ul>
     </div>`;
     
@@ -852,7 +863,8 @@ displayPivotTable(result) {
     // Store pivot data for download
     window.currentPivotData = result;
 }
-
+    
+// 🔧 FIXED: Better numeric column detection
 populatePivotSelectors() {
     if (!this.currentData) {
         console.log('No current data available for pivot selectors');
@@ -869,6 +881,7 @@ populatePivotSelectors() {
     }
     
     console.log('Populating pivot selectors with columns:', this.currentData.columns);
+    console.log('Data types:', this.currentData.dtypes);
     
     // Clear existing options
     rowsSelect.innerHTML = '';
@@ -876,9 +889,13 @@ populatePivotSelectors() {
     valuesSelect.innerHTML = '<option value="">-- Select a numeric column --</option>';
     
     let numericCount = 0;
+    let allColumns = this.currentData.columns || [];
+    let dtypes = this.currentData.dtypes || {};
     
-    // Populate with all columns
-    this.currentData.columns.forEach(col => {
+    // 🔧 FIX: Better numeric detection
+    const numericTypes = ['int', 'float', 'int64', 'int32', 'float64', 'float32', 'number'];
+    
+    allColumns.forEach(col => {
         // Rows selector (all columns can be grouped)
         const rowOption = document.createElement('option');
         rowOption.value = col;
@@ -891,9 +908,16 @@ populatePivotSelectors() {
         colOption.textContent = col;
         columnsSelect.appendChild(colOption);
         
-        // Values selector (only numeric columns can be aggregated)
-        const dtype = this.currentData.dtypes[col];
-        if (dtype && (dtype.includes('int') || dtype.includes('float'))) {
+        // Values selector (only numeric columns)
+        const dtype = dtypes[col];
+        const dtypeStr = dtype ? String(dtype).toLowerCase() : '';
+        
+        // 🔧 FIX: Check if dtype contains any numeric keyword
+        const isNumeric = numericTypes.some(type => dtypeStr.includes(type));
+        
+        console.log(`Column "${col}": dtype="${dtype}", dtypeStr="${dtypeStr}", isNumeric=${isNumeric}`);
+        
+        if (isNumeric) {
             const valOption = document.createElement('option');
             valOption.value = col;
             valOption.textContent = `${col} (${dtype})`;
@@ -902,14 +926,15 @@ populatePivotSelectors() {
         }
     });
     
-    console.log(`Pivot selectors populated: ${this.currentData.columns.length} total columns, ${numericCount} numeric columns`);
+    console.log(`✅ Pivot selectors populated: ${allColumns.length} total columns, ${numericCount} numeric columns`);
     
     // Show warning if no numeric columns
     if (numericCount === 0) {
         valuesSelect.innerHTML = '<option value="">⚠️ No numeric columns found</option>';
         this.showNotification('⚠️ Your data has no numeric columns. Pivot tables require at least one numeric column to aggregate.', 'warning');
     }
-}
+} 
+
 
 downloadPivotCSV() {
     if (!window.currentPivotData) {
